@@ -286,12 +286,13 @@ def train_model_with_parameters_update_visualization(model, train_loader, val_lo
 
 # Test Function with Confusion Matrix
 def test_model(model, test_loader, device, idx_to_gesture):
-    # model.eval()
+    model.eval()
     correct, total = 0, 0
     all_preds = []
     all_labels = []
 
-    with torch.no_grad():
+    # with torch.no_grad():
+    if 1:
         for radar_data, labels in test_loader:
             radar_data, labels = radar_data.to(device), labels.to(device)
             x1 = radar_data[:, 0:1, :, :]
@@ -635,7 +636,7 @@ class RadarMisoCNNApp(QMainWindow):
             # Generate model visualization
             graph = make_dot(model(*dummy_input), params=dict(model.named_parameters()))
             graph.format = "png"
-            graph.render("model_visualization")
+            graph.render(os.path.join(ssp.config.temp_folder, "model_visualization"))
 
             # Display the image in a scrollable dialog
             dialog = QDialog(self)

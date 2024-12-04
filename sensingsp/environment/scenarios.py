@@ -7,8 +7,6 @@ from matplotlib import pyplot as plt
 import cv2
 import os
 import bpy
-import matplotlib
-matplotlib.use('qtagg')
 
 def make_simple_scenario():
     predefine_movingcube_6843()

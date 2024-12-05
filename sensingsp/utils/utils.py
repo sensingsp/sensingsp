@@ -84,6 +84,12 @@ def sph2cart(r, azimuth, elevation):
     y = r * np.cos(elevation) * np.sin(azimuth)
     z = r * np.sin(elevation)
     return x, y, z
+def cart2sph(x, y, z):
+    radius = np.sqrt(x**2 + y**2 + z**2)  # Compute the radial distance
+    azimuth = np.arctan2(y, x)            # Compute the azimuth angle
+    elevation = np.arcsin(z / radius)     # Compute the elevation angle
+    
+    return radius, azimuth, elevation
 def imshow(X=None, xlabel='', ylabel='', title=''):
     if X is None:
         return
@@ -135,6 +141,8 @@ def plot_text(s):
   plt.axis('off')                               # Hides the axis for a cleaner look.
   plt.tight_layout()
   plt.show()
+def initEnvironment():
+  delete_all_objects()
 def delete_all_objects():
     view_layer = bpy.context.view_layer
     bpy.ops.object.select_all(action='DESELECT')
@@ -488,6 +496,22 @@ def exportBlenderTriangles():
       bm.to_mesh(mesh)
       trianglesList=mesh2triangles(mesh)
       out.append(trianglesList)
+  return out
+def exportBlenderFaceCenters(frame=1):
+  out = []
+  bpy.context.scene.frame_set(frame)
+  bpy.context.view_layer.update()
+  depsgraph = bpy.context.evaluated_depsgraph_get()
+  for obj in bpy.context.scene.objects:
+      if obj.type == 'MESH':
+          if obj.name.startswith('Probe_')==False:
+              bm = bmesh.new()
+              bm.from_object(obj, depsgraph)
+              bm.transform(obj.matrix_world)
+              for face in bm.faces:
+                  face_center = face.calc_center_median()
+                  out.append(face_center)
+              bm.free()
   return out
 
 def decimate_scene(decimation_ratio = 0.5):

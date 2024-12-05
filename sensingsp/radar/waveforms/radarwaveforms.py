@@ -79,3 +79,21 @@ def generate_fmcw_signal(f0 = 77e9, B=4e9, T=40e-6, RF1_BaseBand0=True,Nyq = 1):
         phase_t =  np.pi * B / T * t**2
         x = np.exp(1j * phase_t)
     return t , x , fs
+
+def gaussian_waveform(N, mean=0.0, std_dev=1.0):
+    """
+    Creates a Gaussian waveform of length N.
+
+    Parameters:
+    - N (int): Length of the waveform.
+    - mean (float): Mean (center) of the Gaussian function.
+    - std_dev (float): Standard deviation (controls the width) of the Gaussian function.
+
+    Returns:
+    - numpy.ndarray: Gaussian waveform of length N.
+    """
+    # Generate an array of evenly spaced values over N, centered at 0
+    x = np.linspace(-1, 1, N)
+    # Compute the Gaussian waveform
+    gaussian = np.exp(-((x - mean) ** 2) / (2 * std_dev ** 2))
+    return gaussian

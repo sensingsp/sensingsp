@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 import cv2
 import os
 import bpy
+from scipy.signal import lfilter
 
 def make_simple_scenario():
     predefine_movingcube_6843()
@@ -16,105 +17,14 @@ def add_scenario(st):
     if st=='2 Cubes + 6843':
         predefine_movingcube_6843()
     if st == 'Pattern SISO':
-        ssp.utils.delete_all_objects()
-        ssp.utils.define_settings()
-        R=10
-        NF = 360*2
-        cube = ssp.environment.add_cube(location=Vector((R, 0, 0)), direction=Vector((1, 0, 0)), scale=Vector((.5, .5, .5)), subdivision=0)
-        cube["RCS0"]=1
-        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)), scale=(.01, .01, .01))
-        empty = bpy.context.object
-        cube.parent = empty
-        empty.rotation_euler  = (0,0,2*np.pi)
-        empty.keyframe_insert(data_path="rotation_euler", frame=1)
-        empty.rotation_euler  = (0,0,0)
-        empty.keyframe_insert(data_path="rotation_euler", frame=NF/2)
-        empty.rotation_euler  = (0,2*np.pi,0)
-        empty.keyframe_insert(data_path="rotation_euler", frame=NF)
-        for fcurve in empty.animation_data.action.fcurves:
-            for keyframe in fcurve.keyframe_points:
-                keyframe.interpolation = 'LINEAR'
-        ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-        radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
-        ssp.utils.set_frame_start_end(start=1,end=NF)
+        predefine_Pattern_SISO()
         
     if st=='Hand Gesture + 1642':
-        ssp.utils.delete_all_objects()
-        # try:
-        #     ssp.utils.open_Blend(os.path.join(ssp.config.temp_folder, 'arm_to_left 4.blend'))
-        # except Exception as X:
-        #     1
-        blend_file_path = os.path.join(ssp.config.temp_folder, 'arm_to_left 4.blend')
-
-        # The directory inside the .blend file to access objects
-        object_directory = blend_file_path + "/Object/"
-
-        # Append all objects from the file
-        with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
-            # List all objects available in the .blend file
-            print("Available objects:", data_from.objects)
-            # Select objects you want to append (replace with specific names if needed)
-            data_to.objects = data_from.objects  # Load all objects
-
-        # Link the loaded objects to the current scene
-        for obj in data_to.objects:
-            if obj is not None:  # Avoid null references
-                bpy.context.scene.collection.objects.link(obj)
-        ssp.utils.define_settings()
-        ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-        radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
-        rangeResolution,radialVelocityResolution,N_ADC,ChirpTimeMax,CentralFreq=0.039,0.13,256,60e-6,76e9
-
-        ssp.radar.utils.FMCW_Chirp_Parameters(rangeResolution,N_ADC,ChirpTimeMax,radialVelocityResolution,CentralFreq)
-
-        ssp.radar.utils.set_FMCW_Chirp_Parameters(radar,slope=64.06,fsps=4.2,N_ADC=256,NPulse=256,PRI_us=60)
-        radar['RangeFFT_OverNextP2'] = 0
-        radar['Range_End']=100*.6/9.98 
-        radar['DopplerFFT_OverNextP2']=0
-        radar['CFAR_RD_alpha']=15
-        radar['CFAR_Angle_alpha']=2
-        radar['Transmit_Antenna_Element_Pattern']='Directional-Sinc' # add rect pattern
-        radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 60
-        radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 60
-
-        ssp.utils.set_frame_start_end(start=1,end=30)
-        ssp.utils.save_Blender()
-
+        predefine_Hand_Gesture_1642()
+        
     if st == "Hand Gesture + 3 Xethru Nature paper":
-        ssp.utils.delete_all_objects()
-        ssp.utils.define_settings()
-        ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-        radar1 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
-        radar2 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=1, location=Vector((1, 0,0)), rotation=Vector((np.pi/2,0, np.pi/2)), f0=76e9)
-        radar3 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=2, location=Vector((.5, 0,.5)), rotation=Vector((0,0, 0)), f0=76e9)
-        # During data acquisition, examiners recorded a subject repeating a particular hand gesture for 450 seconds, corresponding to 9000 (slow-time) rows. There is 1 complete gesture motion in 90 slow-time frames. As such, each radar signal matrix contains 100 complete hand gesture motion samples. The range of each UWB radar is 1.2 meters, corresponding to 189 fast-time bins.
-        gesture_motion_slowTimeFrames = 90
-        recordedTimePerSample = 4.5
-        radarRange = 1.2
-        fast_time_bins = 189
-        rangebins = radarRange / fast_time_bins
-        for radar in [radar1,radar2,radar3]:
-            radar['RadarMode']='Pulse'
-            radar['PulseWaveform']='UWB'
-            radar['N_ADC']  = fast_time_bins
-            radar['Fs_MHz'] =  ssp.LightSpeed / (2*rangebins) / 1e6
-            radar['PRI_us']= 1e6*recordedTimePerSample/gesture_motion_slowTimeFrames
-            radar['NPulse'] = gesture_motion_slowTimeFrames
-            radar['Range_End']=100
-        FramesNumber=int(1.1*recordedTimePerSample*bpy.context.scene.render.fps)
-        blend_file_path = os.path.join(ssp.config.temp_folder, 'RealisticHand.blend')
-        object_directory = blend_file_path + "/Object/"
-        with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
-            data_to.objects = data_from.objects  # Load all objects
-
-        for obj in data_to.objects:
-            if obj is not None:  # Avoid null references
-                bpy.context.scene.collection.objects.link(obj)
-        # ssp.utils.decimate_scene_all(.1)    
-        ssp.utils.set_RayTracing_balanced()
-        ssp.utils.set_frame_start_end(start=1,end=FramesNumber)
-        ssp.utils.save_Blender()
-
+        predefine_Hand_Gesture_3Xethru_Nature_paper()
+        
     if st == 'Ray Tracing 1':
         ssp.utils.delete_all_objects()
         ssp.utils.define_settings()
@@ -233,31 +143,8 @@ def sim_scenario(st):
         ssp.environment.scenarios.raytracing_test()    
     
     if st == "Hand Gesture + 3 Xethru Nature paper":
-        ssp.utils.trimUserInputs()  
-        ssp.config.restart()
-        # ssp.config.DopplerProcessingMethod_FFT_Winv = (True)
-
-        # ssp.config.directReceivefromTX =  False 
-        # ssp.config.RadarRX_only_fromscatters_itsTX = True
-        # ssp.config.RadarRX_only_fromitsTX = True
-        # ssp.config.Radar_TX_RX_isolation = True
-
-        ssp.utils.useCUDA(False)
-
-        while ssp.config.run():
-            path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
-            Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
-            for isuite, radarSpecifications in enumerate(ssp.RadarSpecifications):
-                for iradar, specifications in enumerate(radarSpecifications):
-                    for XRadar, timeX in Signals[isuite]['radars'][iradar]:
-                        # Range and Doppler processing
-                        plt.figure()
-                        plt.imshow(np.abs(XRadar[:,:,0]), aspect='auto', cmap='viridis')
-                        plt.title(f'{iradar}')
-            print(f'Processed frame = {ssp.config.CurrentFrame}')
-            ssp.utils.increaseCurrentFrame()
-        plt.show()
-    
+        process_predefine_Hand_Gesture_3Xethru_Nature_paper()
+        
 def predefine_movingcube_6843(interpolation_type='LINEAR'):
     #     Blender provides several interpolation types, and as of recent versions, there are 6 main interpolation options:
 
@@ -751,3 +638,154 @@ def update_pointclouds(all_pcs,ax):
     ax.set_zlabel('Y')
     ax.set_xlim([0,30])
     
+def predefine_Hand_Gesture_3Xethru_Nature_paper():
+    ssp.utils.delete_all_objects()
+    ssp.utils.define_settings()
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((-.14, -.5, -.1)), rotation=Vector((0, 0, np.pi/2)))
+    radar1 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+    radar2 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=1, location=Vector((1, 0,0)), rotation=Vector((np.pi/2,0, np.pi/2)), f0=76e9)
+    radar3 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=2, location=Vector((.5, 0,.5)), rotation=Vector((0,0, 0)), f0=76e9)
+    # During data acquisition, examiners recorded a subject repeating a particular hand gesture for 450 seconds, corresponding to 9000 (slow-time) rows. There is 1 complete gesture motion in 90 slow-time frames. As such, each radar signal matrix contains 100 complete hand gesture motion samples. The range of each UWB radar is 1.2 meters, corresponding to 189 fast-time bins.
+    gesture_motion_slowTimeFrames = 90
+    recordedTimePerSample = 4.5
+    radarRange = 1.2
+    fast_time_bins = 189
+    rangebins = radarRange / fast_time_bins
+    for radar in [radar1,radar2,radar3]:
+        radar['RadarMode']='Pulse'
+        radar['PulseWaveform']='UWB'
+        radar['N_ADC']  = fast_time_bins
+        radar['Fs_MHz'] =  ssp.LightSpeed / (2*rangebins) / 1e6
+        radar['RF_AnalogNoiseFilter_Bandwidth_MHz'] =  1500
+        radar['PRI_us']= 1e6*recordedTimePerSample/gesture_motion_slowTimeFrames
+        radar['NPulse'] = gesture_motion_slowTimeFrames
+        radar['Range_End']=100
+    FramesNumber=int(1.1*recordedTimePerSample*bpy.context.scene.render.fps)
+    
+    # add_blenderfileobjects(os.path.join(ssp.config.temp_folder,'RealisticHand.blend'),RCS0=10)    
+    add_blenderfileobjects(os.path.join(ssp.config.temp_folder,'up_down_swipe.blend'),RCS0=10e3)    
+    
+    ssp.utils.set_RayTracing_balanced()
+    ssp.utils.set_frame_start_end(start=1,end=FramesNumber)
+    ssp.utils.save_Blender()
+def add_blenderfileobjects(blend_file_path,RCS0=1,decimatefactor=1):
+    object_directory = blend_file_path + "/Object/"
+    with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
+        data_to.objects = data_from.objects  # Load all objects
+    for obj in data_to.objects:
+        if obj is not None:  # Avoid null references
+            bpy.context.scene.collection.objects.link(obj)
+            if obj.type == 'MESH':
+                obj["RCS0"]=RCS0
+    # if decimatefactor<1:
+    #     ssp.utils.decimate_scene_all(decimation_ratio=decimatefactor)
+def predefine_Hand_Gesture_1642():
+    ssp.utils.delete_all_objects()
+    # try:
+    #     ssp.utils.open_Blend(os.path.join(ssp.config.temp_folder, 'arm_to_left 4.blend'))
+    # except Exception as X:
+    #     1
+    blend_file_path = os.path.join(ssp.config.temp_folder, 'arm_to_left 4.blend')
+    # blend_file_path = os.path.join(ssp.config.temp_folder, 'up_down_swipe.blend')
+    
+
+    # The directory inside the .blend file to access objects
+    object_directory = blend_file_path + "/Object/"
+
+    # Append all objects from the file
+    with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
+        # List all objects available in the .blend file
+        print("Available objects:", data_from.objects)
+        # Select objects you want to append (replace with specific names if needed)
+        data_to.objects = data_from.objects  # Load all objects
+
+    # Link the loaded objects to the current scene
+    for obj in data_to.objects:
+        if obj is not None:  # Avoid null references
+            bpy.context.scene.collection.objects.link(obj)
+    ssp.utils.define_settings()
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+    rangeResolution,radialVelocityResolution,N_ADC,ChirpTimeMax,CentralFreq=0.039,0.13,256,60e-6,76e9
+
+    ssp.radar.utils.FMCW_Chirp_Parameters(rangeResolution,N_ADC,ChirpTimeMax,radialVelocityResolution,CentralFreq)
+
+    ssp.radar.utils.set_FMCW_Chirp_Parameters(radar,slope=64.06,fsps=4.2,N_ADC=256,NPulse=256,PRI_us=60)
+    radar['RangeFFT_OverNextP2'] = 0
+    radar['Range_End']=100*.6/9.98 
+    radar['DopplerFFT_OverNextP2']=0
+    radar['CFAR_RD_alpha']=15
+    radar['CFAR_Angle_alpha']=2
+    radar['Transmit_Antenna_Element_Pattern']='Directional-Sinc' # add rect pattern
+    radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 60
+    radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 60
+
+    ssp.utils.set_frame_start_end(start=1,end=30)
+    ssp.utils.save_Blender()
+def predefine_Pattern_SISO():
+    ssp.utils.delete_all_objects()
+    ssp.utils.define_settings()
+    R=10
+    NF = 360*2
+    cube = ssp.environment.add_cube(location=Vector((R, 0, 0)), direction=Vector((1, 0, 0)), scale=Vector((.5, .5, .5)), subdivision=0)
+    cube["RCS0"]=1
+    bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)), scale=(.01, .01, .01))
+    empty = bpy.context.object
+    cube.parent = empty
+    empty.rotation_euler  = (0,0,2*np.pi)
+    empty.keyframe_insert(data_path="rotation_euler", frame=1)
+    empty.rotation_euler  = (0,0,0)
+    empty.keyframe_insert(data_path="rotation_euler", frame=NF/2)
+    empty.rotation_euler  = (0,2*np.pi,0)
+    empty.keyframe_insert(data_path="rotation_euler", frame=NF)
+    for fcurve in empty.animation_data.action.fcurves:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+    ssp.utils.set_frame_start_end(start=1,end=NF)
+    
+def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
+    ssp.utils.trimUserInputs()  
+    ssp.config.restart()
+    # ssp.config.DopplerProcessingMethod_FFT_Winv = (True)
+
+    # ssp.config.directReceivefromTX =  False 
+    # ssp.config.RadarRX_only_fromscatters_itsTX = True
+    # ssp.config.RadarRX_only_fromitsTX = True
+    # ssp.config.Radar_TX_RX_isolation = True
+
+    ssp.utils.useCUDA(False)
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    data_save = []
+    while ssp.config.run():
+        path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+        for isuite, radarSpecifications in enumerate(ssp.RadarSpecifications):
+            for iradar, specifications in enumerate(radarSpecifications):
+                for XRadar, timeX in Signals[isuite]['radars'][iradar]:
+                    # Range and Doppler processing
+                    # plt.figure()
+                    s = 1500
+                    datasample = np.real(XRadar[:,:,0].T)/s
+                    data_save.append(datasample)
+                    clutter_removal = True
+                    if clutter_removal:
+                        b = [1, -1]
+                        a = [1, -0.9]
+                        datasample = lfilter(b, a, datasample, axis=0)
+                        
+                    
+                    axs[iradar].imshow(datasample, aspect='auto', cmap='viridis')
+                    # plt.title(f'{iradar}')
+                    axs[iradar].axis("off")
+        print(f'Processed frame = {ssp.config.CurrentFrame}')
+        ssp.utils.increaseCurrentFrame()
+    if len(data_save)==3:
+        np.save(os.path.join(ssp.config.temp_folder, 'Left.npy'),data_save[0])
+        np.save(os.path.join(ssp.config.temp_folder, 'Right.npy'),data_save[1])
+        np.save(os.path.join(ssp.config.temp_folder, 'Top.npy'),data_save[2])
+
+    plt.tight_layout()
+    plt.show()

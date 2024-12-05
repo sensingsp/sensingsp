@@ -19,12 +19,13 @@ install_requires = [
     'tensorboard>=2.9.0',         # TensorBoard for visualizations
     'torchviz>=0.0.2',            # Visualization of PyTorch models
     'torchsummary>=1.5.0',        # Summary of PyTorch models
+    'PyWavelets>=1.7.0',
 ]
 
 # Define the setup
 setup(
     name='sensingsp',
-    version='1.2.0',
+    version='1.3.0dev',
     packages=find_packages(),
     install_requires=install_requires,
     url='https://sensingsp.github.io/',

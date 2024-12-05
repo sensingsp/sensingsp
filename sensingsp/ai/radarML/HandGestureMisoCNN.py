@@ -31,6 +31,16 @@ class RadarGestureDataset(Dataset):
         self.classes = {}  # Maps gesture numbers to class indices
         self.data_samples_per_file = 100
         self.slow_time_per_sample = 90
+        self.gestureCodes = ["G1", "G2", "G3", "G4",
+                "G5", "G6", "G7", "G8",
+                "G9", "G10", "G11", "G12"]
+        self.index2gestureCodes={}
+        self.gestureVocabulary = ["L-R swipe", "R-L swipe", "U-D swipe", "D-U swipe",
+                     "Diag-LR-UD swipe", "Diag-LR-DU swipe", "Diag-RL-UD swipe", "Diag-RL-DU swipe",
+                     "clockwise", "counterclockwise", "inward push", "empty"]
+        self.gestureCodes2Vocabulary={}
+        for i,g in enumerate(self.gestureCodes):
+            self.gestureCodes2Vocabulary[g]=self.gestureVocabulary[i]
         self.clutter_removal = clutter_removal
         self.max_folder_number = max_folder_number
         NValid = self.data_samples_per_file * self.slow_time_per_sample
@@ -70,6 +80,7 @@ class RadarGestureDataset(Dataset):
                         gesture_number = int(re.sub(r'\D', '', gesture_name))
                         if gesture_number not in self.classes:
                             self.classes[gesture_number] = class_idx
+                            self.index2gestureCodes[class_idx]=gesture_name
                             class_idx += 1
 
                         self.folders_data_classes.append([left, top, right, gesture_number])
@@ -286,7 +297,7 @@ def train_model_with_parameters_update_visualization(model, train_loader, val_lo
 
 # Test Function with Confusion Matrix
 def test_model(model, test_loader, device, idx_to_gesture):
-    model.eval()
+    # model.eval()
     correct, total = 0, 0
     all_preds = []
     all_labels = []
@@ -584,30 +595,30 @@ class RadarMisoCNNApp(QMainWindow):
 
             # Define the number of samples to plot in each batch
             batch_size = 10
-            fig, axs = plt.subplots(2, 5, figsize=(15, 6))
-            axs = axs.flatten()
+            N=5
+            fig, axs = plt.subplots(3+1, N, figsize=(15, 6))
                 
             # Plot all samples in batches of 'batch_size'
             for batch_start in range(0, dataset_length, batch_size):
                 # Determine the end of the current batch
                 batch_end = min(batch_start + batch_size, dataset_length)
                 
-                # Create subplots for the current batch
-                
-                for i, ax in enumerate(axs):
-                    # Check if we're out of dataset samples
+                for i in range(N):
                     if batch_start + i >= batch_end:
-                        ax.axis("off")  # Turn off any unused subplot
+                        axs[0,i].axis("off")  # Turn off any unused subplot
+                        axs[1,i].axis("off")  # Turn off any unused subplot
+                        axs[2,i].axis("off")  # Turn off any unused subplot
                         continue
-                    
                     idx = batch_start + i
                     radar_data, label = dataset[idx]
-                    radar_image = radar_data[0].numpy()  # Select the first channel (left)
-                    ax.clear()
-                    ax.imshow(radar_image, aspect='auto', cmap='viridis')
-                    ax.set_title(f"Label: {label.item()} : {radar_image.shape}")
-                    ax.axis("off")
-
+                    for j in range(3):
+                        axs[j,i].clear()
+                        axs[j,i].imshow(radar_data[j].numpy(), aspect='auto', cmap='viridis')
+                        axs[j,i].set_title(f"Sensor: {j+1}, Class {label.item()}")
+                        # axs[j,i].set_title(f"Sensor: {j+1}, Class :{list(dataset.classes.keys())[list(dataset.classes.values()).index(label.item())]}")
+                    axs[3,i].clear()
+                    axs[3,i].plot(radar_data[j].numpy()[45,:])
+                        
                 plt.draw()
                 plt.pause(0.001)
                 plt.gcf().canvas.flush_events()

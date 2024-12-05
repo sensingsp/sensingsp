@@ -162,6 +162,7 @@ def processing_functions_RISProbe1():
             combined_geometry += sphere
         o3d.visualization.draw_geometries([combined_geometry])
 
+    
 def extrafunctions(st):
     if st == "Environment Meshes":
         ssp.utils.trimUserInputs() 
@@ -197,8 +198,11 @@ def extrafunctions(st):
         ssp.utils.channels_info(path_d_drate_amp)
     if st == "RIS Simulation":
         ssp.utils.processingfunctions.processing_functions_RISProbe1()
+    if st == "Antenna Pattern":
+        ssp.visualization.plot_pattern_button()
     if st == "Open Temp Folder":
         ssp.utils.open_temp_folder()
+        
     if st == "Light RayTracing":
         ssp.utils.set_RayTracing_light()
         

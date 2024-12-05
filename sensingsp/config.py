@@ -82,6 +82,7 @@ class Config():
                 ('Ray Tracing Simulation', "Ray Tracing Simulation", "Ray Tracing Simulation"),
                 ('CSI Simulation', "CSI Simulation", "CSI Simulation"),
                 ('RIS Simulation', "RIS Simulation", "RIS Simulation"),
+                ('Antenna Pattern', "Antenna Pattern", "Antenna Pattern"),
                 ('Open Temp Folder', "Open Temp Folder", "Open Temp Folder"),
                 ('Light RayTracing', "Light RayTracing", "Light RayTracing"),
                 ('Balanced RayTracing', "Balanced RayTracing", "Balanced RayTracing"),

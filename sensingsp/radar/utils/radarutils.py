@@ -2,7 +2,7 @@
 # import easygui
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Vector, Matrix
 import matplotlib.pyplot as plt
 LightSpeed = 299792458.0  # Speed of light in m/s
 from collections import defaultdict
@@ -12,6 +12,12 @@ import json
 
 import sensingsp as ssp
 
+from enum import Enum
+class RadarSensorsCategory(Enum):
+    TI_AWR1642 = 1
+    RED = 2
+    GREEN = 3
+    BLUE = 4
 
 class RadarSpecJSON:
     def __init__(self, model=None, frequency_range=None, bandwidth=None, transmit_channels=None, receive_channels=None,
@@ -1764,3 +1770,113 @@ def steeringvector(va,az):
     s=np.exp(1j*np.pi*va*np.sin(np.deg2rad(az))).reshape(va.shape[0],1)
     return s
      
+
+def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0):
+    """
+    Adds a target cube in a Blender scene with specified parameters.
+    The cube's location and orientation are adjusted based on azimuth, elevation, and reference radar.
+
+    Parameters:
+        refRadar: The reference radar object for alignment (optional).
+        range: Distance of the target from the radar (default 10).
+        azimuth: Azimuth angle in degrees (default 0).
+        elevation: Elevation angle in degrees (default 0).
+        RCS0: Radar cross-section value (default 1).
+        size: Size of the cube (default 1.0).
+
+    Returns:
+        cube: The cube object representing the target.
+        empty: The empty parent object used for positioning and orientation.
+    """
+    # Create the cube representing the target
+    bpy.ops.mesh.primitive_cube_add(
+        size=size,
+        align='WORLD',
+        location=(range + 0.5 * size, 0, 0),  # Temporary location
+        scale=(1, 1, 1)
+    )
+    cube = bpy.context.object
+    cube["RCS0"] = RCS0  # Store RCS value as a custom property
+
+    # Create an empty object to act as the parent of the cube
+    bpy.ops.object.empty_add(
+        type='PLAIN_AXES',
+        align='WORLD',
+        location=(0, 0, 0),
+        rotation=(0, 0, 0),
+        scale=(0.01, 0.01, 0.01)
+    )
+    empty = bpy.context.object
+    cube.parent = empty  # Parent the cube to the empty
+
+    # Set up azimuth and elevation angles in radians
+    azimuth_rad = np.radians(azimuth)
+    elevation_rad = np.radians(elevation)
+
+    if refRadar is not None:
+        # Decompose the reference radar's world matrix
+        global_location, global_rotation, _ = refRadar.matrix_world.decompose()
+
+        # Set the empty object's location to match the radar's location
+        empty.location = global_location
+
+        # Compute the direction vector from azimuth and elevation
+        dir = ssp.raytracing.dir_from_azel_matrix(azimuth_rad, elevation_rad, global_rotation)
+
+        # Convert the direction vector to azimuth and elevation in spherical coordinates
+        _, az_new, el_new = ssp.utils.cart2sph(dir.x, dir.y, dir.z)
+
+        empty.rotation_euler = (0, -el_new, az_new)
+
+    return cube, empty
+
+def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642):
+    suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
+    suiteIndex=len(suite_planes)
+    if len(suite_planes)==0:
+        ssp.integratedSensorSuite.define_suite(suiteIndex, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
+    obj = suite_planes[-1]
+    radar_planes = ssp.environment.BlenderSuiteFinder().find_radar_planes(obj)
+    radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
+    
+    if radarSensor==RadarSensorsCategory.TI_AWR1642:
+        radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+        rangeResolution,radialVelocityResolution,N_ADC,ChirpTimeMax,CentralFreq=0.039,0.13,256,60e-6,76e9
+        ssp.radar.utils.FMCW_Chirp_Parameters(rangeResolution,N_ADC,ChirpTimeMax,radialVelocityResolution,CentralFreq)
+
+        ssp.radar.utils.set_FMCW_Chirp_Parameters(radar,slope=64.06,fsps=4.2,N_ADC=256,NPulse=256,PRI_us=60)
+        radar['RangeFFT_OverNextP2'] = 0
+        radar['Range_End']=100*.6/9.98 
+        radar['DopplerFFT_OverNextP2']=0
+        radar['CFAR_RD_alpha']=15
+        radar['CFAR_Angle_alpha']=2
+        radar['Transmit_Antenna_Element_Pattern']='Directional-Sinc' # add rect pattern
+        radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 60
+        radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 60
+        return radar
+    return None
+
+
+# suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
+#     obj = bpy.context.view_layer.objects.active
+#     if obj in suite_planes:
+#         suiteIndex = int(obj.name.split('_')[-1])
+#         radar_planes = ssp.environment.BlenderSuiteFinder().find_radar_planes(obj)
+#         radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
+#         if option=="Cascade":
+#             ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+#         if option=="6843":
+#             ssp.radar.utils.predefined_array_configs_TI_IWR6843(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+#         if option=="SISO":
+#             ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+#         if option=="awr1642":
+#             ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=freq)
+#         if option=="JSON":
+#             ssp.radar.utils.predefined_array_configs_JSON(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+#     else:
+#         suiteIndex = max([int(plane.name.split('_')[-1]) for plane in suite_planes] or [-1]) + 1
+#         ssp.integratedSensorSuite.define_suite(suiteIndex, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+#         if option=="Cascade":
+#             ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+    

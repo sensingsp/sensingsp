@@ -17,6 +17,23 @@ def azel_fromRotMatrix_dir(Mat,Dir):
     dir = A @ dir
     az, el, r = cart2sph(dir.x, dir.y, dir.z)
     return az , el
+def dir_from_azel_matrix(azimuth, elevation, matrix):
+    x, y, z = ssp.utils.sph2cart(1,azimuth, elevation)  # Assuming unit vector
+    
+    # Create a vector from Cartesian coordinates
+    local_dir = Vector((x, y, z))
+    
+    # Define the reverse transformation quaternion
+    reverse_quaternion = Euler(np.radians((90, 0, -90)), 'XYZ').to_quaternion()
+    
+    # Apply the reverse transformation
+    local_dir = reverse_quaternion.inverted() @ local_dir
+    
+    # Transform by the rotation matrix
+    direction = matrix @ local_dir
+    
+    return direction
+
 def azel_fromRotMatrix_dir_test(Mat,Dir):
     local_direction = Mat.inverted() @ Dir
     azimuth = np.arctan2(local_direction.y, local_direction.x)

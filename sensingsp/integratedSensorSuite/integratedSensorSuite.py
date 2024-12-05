@@ -310,8 +310,12 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
                         PulseWaveform = ssp.RadarSpecifications[isrx][irrx]['PulseWaveform']
                         Waveform = ssp.radar.radarwaveforms.barker_code(11)
                         if PulseWaveform=='UWB':
-                          Waveform = np.array([1.0],dtype=np.complex128)
-                        ssp.RadarSpecifications[isrx][irrx]['PulseWaveform_Loaded']=Waveform
+                          
+                          Lwaveform = int(1.5*1/Ts/ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
+                          # Waveform = ssp.radar.radarwaveforms.gaussian_waveform(Lwaveform,std_dev=.3)
+                          Waveform = ssp.radar.radarwaveforms.gaussian_waveform(Lwaveform,std_dev=0.6)
+                          Waveform *= np.sin(np.pi*2*np.arange(Waveform.shape[0])*.3)
+                          ssp.RadarSpecifications[isrx][irrx]['PulseWaveform_Loaded']=Waveform
                       if RadarMode=='CW':
                         FMCWRadar = 2
                         

@@ -640,6 +640,13 @@ def update_pointclouds(all_pcs,ax):
     
 def predefine_Hand_Gesture_3Xethru_Nature_paper():
     ssp.utils.delete_all_objects()
+    
+    if "Extra Settings" not in bpy.data.objects:
+        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+        sim_axes = bpy.context.object
+        sim_axes.name = f'Extra Settings'
+        sim_axes["Hand Gesture output"] = os.path.join(ssp.config.temp_folder,'HandG.mat')
+        sim_axes["Hand Gesture 3D Asset"] = os.path.join(ssp.config.temp_folder,'assets/HandGest/up_down_swipe.blend')
     ssp.utils.define_settings()
     ssp.integratedSensorSuite.define_suite(0, location=Vector((-.14, -.5, -.1)), rotation=Vector((0, 0, np.pi/2)))
     radar1 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
@@ -663,7 +670,7 @@ def predefine_Hand_Gesture_3Xethru_Nature_paper():
     FramesNumber=int(1.1*recordedTimePerSample*bpy.context.scene.render.fps)
     
     # add_blenderfileobjects(os.path.join(ssp.config.temp_folder,'RealisticHand.blend'),RCS0=10)    
-    add_blenderfileobjects(os.path.join(ssp.config.temp_folder,'up_down_swipe.blend'),RCS0=10e3)    
+    add_blenderfileobjects(os.path.join(ssp.config.temp_folder,'assets/HandGest/up_down_swipe.blend'),RCS0=10e3)    
     
     ssp.utils.set_RayTracing_balanced()
     ssp.utils.set_frame_start_end(start=1,end=FramesNumber)
@@ -757,7 +764,7 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
 
     ssp.utils.useCUDA(False)
 
-    fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 6))
     data_save = []
     while ssp.config.run():
         path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
@@ -777,15 +784,23 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
                         datasample = lfilter(b, a, datasample, axis=0)
                         
                     
-                    axs[iradar].imshow(datasample, aspect='auto', cmap='viridis')
+                    # axs[iradar].imshow(datasample, aspect='auto', cmap='viridis')
                     # plt.title(f'{iradar}')
-                    axs[iradar].axis("off")
+                    # axs[iradar].axis("off")
         print(f'Processed frame = {ssp.config.CurrentFrame}')
         ssp.utils.increaseCurrentFrame()
     if len(data_save)==3:
-        np.save(os.path.join(ssp.config.temp_folder, 'Left.npy'),data_save[0])
-        np.save(os.path.join(ssp.config.temp_folder, 'Right.npy'),data_save[1])
-        np.save(os.path.join(ssp.config.temp_folder, 'Top.npy'),data_save[2])
 
-    plt.tight_layout()
-    plt.show()
+        data_to_save = {
+            "Left": data_save[0],  # Example 2D array for "Left"
+            "Top": data_save[1],  # Example 2D array for "Top"
+            "Right": data_save[2]  # Example 2D array for "Right"
+        }
+        from scipy.io import savemat
+        savemat(os.path.join(ssp.config.temp_folder, 'simHG.mat'), data_to_save)
+        # np.save(os.path.join(ssp.config.temp_folder, 'Left.npy'),data_save[0])
+        # np.save(os.path.join(ssp.config.temp_folder, 'Right.npy'),data_save[1])
+        # np.save(os.path.join(ssp.config.temp_folder, 'Top.npy'),data_save[2])
+
+    # plt.tight_layout()
+    # plt.show()

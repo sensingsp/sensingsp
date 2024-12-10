@@ -26,17 +26,17 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QCheckBox,
-    QDialog,QScrollArea,QMessageBox,QComboBox,
+    QDialog,QScrollArea,QMessageBox,QComboBox,QProgressBar,
 )
 from PyQt5.QtCore import Qt
-
+import sensingsp as ssp
 
 class RadarGestureDataset(Dataset):
-    def __init__(self, data_folder, max_folder_number=1e6, clutter_removal=True):
+    def __init__(self, data_folder, max_folder_number=1e6, clutter_removal=True,PercentBar=False):
         self.data_folder = data_folder
         self.folders_data_classes = []  # Stores (left, top, right, gesture_number)
-        self.classes = {}  # Map gesture_number to class_idx
-        self.index2gestureCodes = {}
+        # self.classes = {}  # Map gesture_number to class_idx
+        # self.index2gestureCodes = {}
 
         self.data_samples_per_file = 100
         self.slow_time_per_sample = 90
@@ -46,7 +46,7 @@ class RadarGestureDataset(Dataset):
         self.gestureVocabulary = ["L-R swipe", "R-L swipe", "U-D swipe", "D-U swipe",
                                   "Diag-LR-UD swipe", "Diag-LR-DU swipe", "Diag-RL-UD swipe", "Diag-RL-DU swipe",
                                   "clockwise", "counterclockwise", "inward push", "empty"]
-        self.gestureCodes2Vocabulary = {g: v for g, v in zip(self.gestureCodes, self.gestureVocabulary)}
+        # self.gestureCodes2Vocabulary = {g: v for g, v in zip(self.gestureCodes, self.gestureVocabulary)}
 
         self.clutter_removal = clutter_removal
         self.max_folder_number = int(max_folder_number)
@@ -60,12 +60,20 @@ class RadarGestureDataset(Dataset):
             if not os.path.isdir(subject_path):
                 continue
             self.Max_folder_available += 1
-        
+        if PercentBar:
+            progressBar = QProgressBar()
+            progressBar.setMinimum(0)
+            progressBar.setMaximum(min(self.max_folder_number,self.Max_folder_available))
+            progressBar.setWindowTitle("Loading dataset SensingSP")
+            progressBar.show()
         for subject_folder in sorted(os.listdir(data_folder)):
             subject_path = os.path.join(data_folder, subject_folder)
             if not os.path.isdir(subject_path):
                 continue
             folder_number += 1
+            if PercentBar:
+                progressBar.setValue(folder_number)
+                QApplication.processEvents()
             if folder_number > self.max_folder_number:
                 break
 
@@ -103,12 +111,12 @@ class RadarGestureDataset(Dataset):
 
                     # Extract gesture number
                     gesture_number = int(re.sub(r'\D', '', gesture_name))
-                    if gesture_number not in self.classes:
-                        self.classes[gesture_number] = class_idx
-                        self.index2gestureCodes[class_idx] = gesture_name
-                        class_idx += 1
+                    # if gesture_number not in self.classes:
+                    #     self.classes[gesture_number] = class_idx
+                    #     self.index2gestureCodes[class_idx] = gesture_name
+                    #     class_idx += 1
 
-                    self.folders_data_classes.append([left, top, right, gesture_number])
+                    self.folders_data_classes.append([left, top, right, gesture_number-1])
 
     def normalize_along_rows(self, X):
         # Normalize each row of X to [0, 1]
@@ -138,7 +146,7 @@ class RadarGestureDataset(Dataset):
         radar_tensor = np.stack([left_sample, top_sample, right_sample], axis=0)  # shape: (3,90,189)
         radar_tensor = torch.tensor(radar_tensor, dtype=torch.float32)
 
-        label = torch.tensor(self.classes[gesture_number], dtype=torch.long)
+        label = torch.tensor(gesture_number, dtype=torch.long)
         return radar_tensor, label
 
 class RadarBranch(nn.Module):
@@ -212,154 +220,7 @@ def runradarmisoCNNapp():
     app = QApplication.instance()  # Check if an instance already exists
     if not app:  # If no instance exists, create one
         app = QApplication(sys.argv)
-    appSTYLESHEET = """
-        /* General */
-        QWidget {
-            background-color: #f5f5f5;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-size: 12pt;
-            color: #333333;
-        }
-
-        /* Buttons */
-        QPushButton {
-            background-color: #0078d7;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 12pt;
-        }
-        QPushButton:hover {
-            background-color: #005a9e;
-        }
-        QPushButton:pressed {
-            background-color: #003f73;
-        }
-        QPushButton:disabled {
-            background-color: #cccccc;
-            color: #666666;
-        }
-
-        /* Line Edit */
-        QLineEdit {
-            background-color: white;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            padding: 6px;
-        }
-        QLineEdit:focus {
-            border: 1px solid #0078d7;
-        }
-
-        /* Labels */
-        QLabel {
-            font-size: 12pt;
-            color: #333333;
-        }
-
-        /* ComboBox */
-        QComboBox {
-            background-color: white;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            padding: 6px;
-        }
-        QComboBox::drop-down {
-            border-left: 1px solid #cccccc;
-            width: 20px;
-            background-color: #f5f5f5;
-        }
-        QComboBox::down-arrow {
-            image: url(down-arrow-icon.png); /* Replace with your icon path */
-        }
-
-        /* Checkboxes */
-        QCheckBox {
-            spacing: 6px;
-            font-size: 12pt;
-            color: #333333;
-        }
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border: 1px solid #cccccc;
-            border-radius: 2px;
-            background-color: white;
-        }
-        QCheckBox::indicator:checked {
-            background-color: #0078d7;
-            border: 1px solid #0078d7;
-            image: url(check-icon.png); /* Replace with your icon path */
-        }
-
-        /* Scroll Bars */
-        QScrollBar:vertical {
-            background-color: #f5f5f5;
-            width: 10px;
-            margin: 0px;
-        }
-        QScrollBar::handle:vertical {
-            background-color: #cccccc;
-            border-radius: 4px;
-        }
-        QScrollBar::handle:vertical:hover {
-            background-color: #0078d7;
-        }
-        QScrollBar::add-line:vertical,
-        QScrollBar::sub-line:vertical {
-            background: none;
-        }
-
-        /* Progress Bar */
-        QProgressBar {
-            background-color: #e6e6e6;
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-            text-align: center;
-            height: 12px;
-        }
-        QProgressBar::chunk {
-            background-color: #0078d7;
-            border-radius: 4px;
-        }
-
-        /* Tabs */
-        QTabWidget::pane {
-            border: 1px solid #cccccc;
-            border-radius: 4px;
-        }
-        QTabBar::tab {
-            background-color: #f5f5f5;
-            padding: 8px;
-            border: 1px solid #cccccc;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-            margin-right: 2px;
-        }
-        QTabBar::tab:selected {
-            background-color: #0078d7;
-            color: white;
-            border: 1px solid #0078d7;
-        }
-        QTabBar::tab:hover {
-            background-color: #005a9e;
-        }
-
-        /* Table View */
-        QTableView {
-            border: 1px solid #cccccc;
-            gridline-color: #eeeeee;
-            background-color: white;
-            alternate-background-color: #f9f9f9;
-        }
-        QHeaderView::section {
-            background-color: #f5f5f5;
-            padding: 8px;
-            border: 1px solid #cccccc;
-        }
-        """
-
+    appSTYLESHEET = ssp.config.appSTYLESHEET
     app.setStyleSheet(appSTYLESHEET)  # Replace with your desired stylesheet if any
     
     window = RadarMisoCNNApp()
@@ -378,9 +239,7 @@ class RadarMisoCNNApp(QMainWindow):
         self.setWindowTitle("Hand Gesture Classification Using Radar Signals and Deep Learning")
         self.default_folder = "/home/moein/Documents/MATLAB/Examples/R2024a/supportfiles/SPT/data/uwb-gestures"
         self.default_folder = "C:/Users/moein.ahmadi/OneDrive - University of Luxembourg/ThingsToDo/Max/HG Nature/data/uwb-gestures"
-        self.default_folder = "/home/moein/Downloads/uwb-gestures"  # Update with the path to your dataset
-
-
+        # self.default_folder = "/home/moein/Downloads/uwb-gestures"  # Update with the path to your dataset
         self.initUI()
         self.initNet()
 
@@ -401,12 +260,14 @@ class RadarMisoCNNApp(QMainWindow):
         folder_layout.addWidget(self.data_folder_input)
         folder_layout.addWidget(self.data_folder_browse_button)
         form_layout.addRow("Dataset Folder:", folder_layout)
+        self.load_button = QPushButton("Load Dataset")
+        self.load_button.clicked.connect(self.loaddataset)
+        form_layout.addRow("Load:", self.load_button)
 
         self.folderN_input = QSpinBox(self)
         self.folderN_input.setMinimum(1)
         self.folderN_input.setValue(8)
         form_layout.addRow("Folder read num:", self.folderN_input)
-        
         self.epochs_input = QSpinBox(self)
         self.epochs_input.setMinimum(1)
         self.epochs_input.setValue(3)
@@ -446,14 +307,14 @@ class RadarMisoCNNApp(QMainWindow):
 
         # Buttons for actions in rows
         # Row 0
-        row0_layout = QHBoxLayout()
-        self.load_button = QPushButton("Load Dataset")
-        self.load_button.clicked.connect(self.loaddataset)
-        self.defmodel_button = QPushButton("Define Model")
-        self.defmodel_button.clicked.connect(self.def_model)
-        row0_layout.addWidget(self.load_button)
-        row0_layout.addWidget(self.defmodel_button)
-        main_layout.addLayout(row0_layout)
+        # row0_layout = QHBoxLayout()
+        # self.load_button = QPushButton("Load Dataset")
+        # self.load_button.clicked.connect(self.loaddataset)
+        # self.defmodel_button = QPushButton("Define Model")
+        # self.defmodel_button.clicked.connect(self.def_model)
+        # row0_layout.addWidget(self.load_button)
+        # # row0_layout.addWidget(self.defmodel_button)
+        # main_layout.addLayout(row0_layout)
 
         
         # Buttons for actions in rows
@@ -473,23 +334,32 @@ class RadarMisoCNNApp(QMainWindow):
         self.visualize_button.clicked.connect(self.visualize_model)
         self.visualize_samples_button = QPushButton("Visualize Samples")
         self.visualize_samples_button.clicked.connect(self.visualize_samples)
-        row2_layout.addWidget(self.visualize_button)
+        # row2_layout.addWidget(self.visualize_button)
+        
+        self.combobox = QComboBox()
+        row2_layout.addWidget(self.combobox)
+        
+        
+        self.sampleVisN_input = QSpinBox(self)
+        self.sampleVisN_input.setMinimum(1)
+        self.sampleVisN_input.setValue(5)
+        row2_layout.addWidget(self.sampleVisN_input)
+        
         row2_layout.addWidget(self.visualize_samples_button)
         main_layout.addLayout(row2_layout)
 
         # Row 3
-        row3_layout = QHBoxLayout()
-        self.combobox = QComboBox()
+        # row3_layout = QHBoxLayout()
         # self.combobox.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
         # self.combobox.currentIndexChanged.connect(self.on_combobox_change)
-        row3_layout.addWidget(self.combobox)
+        # row3_layout.addWidget(self.combobox)
         # self.visualize_button = QPushButton("Visualize Network")
         # self.visualize_button.clicked.connect(self.visualize_model)
         # self.visualize_samples_button = QPushButton("Visualize Samples")
         # self.visualize_samples_button.clicked.connect(self.visualize_samples)
         # row3_layout.addWidget(self.visualize_button)
         # row3_layout.addWidget(self.visualize_samples_button)
-        main_layout.addLayout(row3_layout)
+        # main_layout.addLayout(row3_layout)
 
         # # Row 3
         # row3_layout = QHBoxLayout()
@@ -502,17 +372,19 @@ class RadarMisoCNNApp(QMainWindow):
         # main_layout.addLayout(row3_layout)
 
         self.testfile_input = QLineEdit(self)
-        self.testfile_input.setText("")  # Set default folder
+        self.testfile_input.setText(os.path.join(ssp.config.temp_folder,'HandG.mat'))  # Set default folder
         self.testfile_browse_button = QPushButton("Browse")
         self.testfile_browse_button.clicked.connect(self.browse_testfile)
         testfile_layout = QHBoxLayout()
+        
         testfile_layout.addWidget(self.testfile_input)
         testfile_layout.addWidget(self.testfile_browse_button)
-        form_layout.addRow("Test File:", testfile_layout)
+        # form_layout.addRow("Test File:", testfile_layout)
 
         row4_layout = QHBoxLayout()
         self.testfile_button = QPushButton("Test input file")
         self.testfile_button.clicked.connect(self.testinput_model)
+        row4_layout.addLayout(testfile_layout)
         row4_layout.addWidget(self.testfile_button)
         main_layout.addLayout(row4_layout)
 
@@ -523,12 +395,15 @@ class RadarMisoCNNApp(QMainWindow):
 
     def initNet(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cpu")
         self.num_classes = 12
+        self.savebestmodelpath = os.path.join(ssp.config.temp_folder,"best_model.pth")
+        
         # dataset = RadarGestureDataset(data_folder=self.default_folder, clutter_removal=True)
 
     def initdataset(self):
-        clutter_removal = self.clutter_removal_checkbox 
-        self.dataset = RadarGestureDataset(data_folder=self.default_folder, clutter_removal=clutter_removal,max_folder_number=self.folderN_input.value())
+        clutter_removal = self.clutter_removal_checkbox.isChecked() 
+        self.dataset = RadarGestureDataset(data_folder=self.default_folder, clutter_removal=clutter_removal,max_folder_number=self.folderN_input.value(),PercentBar=True)
         
         
         self.combobox.clear()
@@ -558,11 +433,13 @@ class RadarMisoCNNApp(QMainWindow):
     def testinput_model(self):
         test_file_path = self.testfile_input.text()
         if test_file_path:
-            fig, axs = plt.subplots(1, 4, figsize=(15, 6))
+            fig, axs = plt.subplots(1, 5, figsize=(15, 6))
             # Load the best model
-            self.model.load_state_dict(torch.load("best_model.pth"))
+            model = MultiInputModel(num_classes=self.num_classes)
+            model.load_state_dict(torch.load(self.savebestmodelpath))
+            model.to(self.device)
             
-            self.model.eval()
+            model.eval()
             mat_data = loadmat(test_file_path)
             left = mat_data.get("Left")
             top = mat_data.get("Top")
@@ -590,19 +467,19 @@ class RadarMisoCNNApp(QMainWindow):
                 radar_tensor = torch.tensor(radar_tensor, dtype=torch.float32).unsqueeze(0)
                 radar_tensor = radar_tensor.to(self.device)
                 with torch.no_grad():
-                    outputs = self.model(radar_tensor)
+                    outputs = model(radar_tensor)
                     _, preds = torch.max(outputs, 1)
-                    Gi = self.dataset.index2gestureCodes[preds.item()]
-                    Gn = self.dataset.gestureCodes2Vocabulary[Gi]
+                    Gi = f"G{preds.item()}"
+                    Gn = self.dataset.gestureVocabulary[preds.item()]
                     print(Gi,Gn)
                 
                 radar=["Left","Top","Right"]
                 SourceLocations = np.array([[0, 0], [0.5, 0.5], [1, 0]])
                 results= []
-                data = radar_tensor.numpy().squeeze()
+                data = radar_tensor.cpu().numpy().squeeze()
                 max_indices = np.argmax(np.abs(data), axis=2)
-                for i in range(max_indices.shape[1]):
-                    ranges = 1.2/189 * max_indices[:,i]
+                for i2 in range(max_indices.shape[1]):
+                    ranges = 1.2/189 * max_indices[:,i2]
                     # Define the objective function
                     def objective(xy):
                         x, y = xy
@@ -614,21 +491,25 @@ class RadarMisoCNNApp(QMainWindow):
                     results.append(res.x)
                     # estimate x,y such that min sum(distance(SourceLocations[i]-[x,y])) i 0:3
                 results = np.array(results)
-                for i in range(3):
-                    axs[i].clear()
-                    axs[i].imshow(data[i,:,:], aspect='auto', cmap='viridis')
-                    axs[i].set_title(f"{Gn} : {radar[i]}")
-                i=3
-                axs[i].clear()
-                axs[i].plot(results[:,0],results[:,1],'.')
-                axs[i].set_aspect('equal', adjustable='box')
+                for i2 in range(3):
+                    axs[i2].clear()
+                    axs[i2].imshow(data[i2,:,:], aspect='auto', cmap='viridis')
+                    axs[i2].set_title(f"{Gn} : {radar[i2]}")
+                i2=3
+                axs[i2].clear()
+                axs[i2].plot(results[:,0],results[:,1],'.')
+                axs[i2].set_aspect('equal', adjustable='box')
 
-                axs[i].set_title(f"{Gn}")
+                axs[i2].set_title(f"{Gn}")
+                i2=4
+                axs[i2].clear()
+                axs[i2].plot(data[0,40:45,:].T)
                 plt.draw()
                 plt.tight_layout()
                 plt.gcf().canvas.flush_events()
                 plt.pause(0.001)
-                break
+                if i>1:
+                    break
         
             plt.show()
             
@@ -637,7 +518,7 @@ class RadarMisoCNNApp(QMainWindow):
         file, _ = QFileDialog.getOpenFileName(
             self, 
             "Select Test File", 
-            "/tmp/SensingSP", 
+            os.path.join(ssp.config.temp_folder,""), 
             "MAT Files (*.mat)"  # Filter to show only .mat files
         )
         if file:
@@ -653,7 +534,8 @@ class RadarMisoCNNApp(QMainWindow):
         self.status_label.setText(f"Status: Dataset is loaded, {self.dataset.Max_folder_available} folders available...")
         
     def def_model(self):
-        self.model = MultiInputModel(num_classes=self.num_classes).to(self.device)
+        # self.model = MultiInputModel(num_classes=self.num_classes)
+        1
         
     def train_model(self):
         # Placeholder for training logic
@@ -661,11 +543,15 @@ class RadarMisoCNNApp(QMainWindow):
         # -----------------------------
         # Model, Loss, Optimizer
         # -----------------------------
+        self.model = MultiInputModel(num_classes=self.num_classes)
+        self.model.to(self.device)
+            
         self.criterion = nn.CrossEntropyLoss()
         learning_rate = self.learning_rate_input.value()*1e-3
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
 
         num_epochs = self.epochs_input.value() 
+        
 
 
         fig, axs = plt.subplots(2, 1)
@@ -731,7 +617,7 @@ class RadarMisoCNNApp(QMainWindow):
 
                         if matlab_loss < best_loss:
                             best_loss = matlab_loss
-                            torch.save(self.model.state_dict(), "best_model.pth")
+                            torch.save(self.model.state_dict(), self.savebestmodelpath)
                     self.model.train()
                 
                 
@@ -764,10 +650,9 @@ class RadarMisoCNNApp(QMainWindow):
         # Testing Loop
         # -----------------------------
         # Load the best model
-        self.model.load_state_dict(torch.load("best_model.pth"))
+        self.model.load_state_dict(torch.load(self.savebestmodelpath))
+        self.model.to(self.device)
         self.model.eval()
-
-
         all_preds = []
         all_labels = []
 
@@ -869,8 +754,10 @@ class RadarMisoCNNApp(QMainWindow):
         fig, axs = plt.subplots(1, 4, figsize=(15, 6))
         kd = 0
         radar=["Left","Top","Right"]
+        MaxVis = self.sampleVisN_input.value()
         for d,l in self.dataset:
-            gi = self.dataset.gestureCodes2Vocabulary[self.dataset.gestureCodes[l.item()]]
+            
+            gi = self.dataset.gestureVocabulary[l.item()] 
             if gi == g:
 
                 SourceLocations = np.array([[0, 0], [0.5, 0.5], [1, 0]])
@@ -905,7 +792,7 @@ class RadarMisoCNNApp(QMainWindow):
                 plt.gcf().canvas.flush_events()
                 plt.pause(0.001)
                 kd +=1
-                if kd >10:
+                if kd >= MaxVis:
                     break
 
         plt.show()

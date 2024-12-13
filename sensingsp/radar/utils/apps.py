@@ -616,6 +616,13 @@ def appselect(st):
         runradarconfigapp()       
     if st=="Hand Gesture MisoCNN":
         ssp.ai.radarML.HandGestureMisoCNN.runradarmisoCNNapp() 
+    if st=="Human Health Monitoring":
+        ssp.ai.radarML.HumanHealthMonitoringConvAE_BiLSTM.runradarConvAEBiLSTMapp() 
+    if st=="GAN Radar Waveforms":
+        ssp.ai.radarML.GANWaveforms.runradarWaveformapp()
+        # ssp.ai.radarML.H
+        
+        
 def runfmcwchirpapp():
     app = QApplication.instance()  # Check if an instance already exists
     if not app:  # If no instance exists, create one

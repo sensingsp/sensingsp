@@ -1,1 +1,1 @@
-from . import HandGestureMisoCNN,HumanHealthMonitoringConvAE_BiLSTM
+from . import HandGestureMisoCNN,HumanHealthMonitoringConvAE_BiLSTM,GANWaveforms

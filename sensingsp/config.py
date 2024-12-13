@@ -54,6 +54,8 @@ class Config():
                 ('FMCW Chirp Parameters Calculator', "FMCW Chirp Calculator", "FMCW Chirp Parameters Calculator"),
                 ('Radar Parameters', "Radar Parameters", "Radar Parameters"),
                 ('Hand Gesture MisoCNN', "Hand Gesture MisoCNN", "Hand Gesture MisoCNN"),
+                ('Human Health Monitoring', "Human Health Monitoring", "Human Health Monitoring"),
+                ('GAN Radar Waveforms', "GAN Radar Waveforms", "GAN Radar Waveforms"),
             ]
         self.radars =[
                 ('TI AWR 1642 (2TX-4RX)', "TI AWR 1642 (2TX-4RX)", "TI AWR 1642 (2TX-4RX)"),

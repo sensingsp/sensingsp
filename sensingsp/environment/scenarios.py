@@ -770,7 +770,7 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
 
     ssp.utils.useCUDA(False)
 
-    # fig, axs = plt.subplots(1, 3, figsize=(15, 6))
+    fig, axs = plt.subplots(1, 3, figsize=(15, 6))
     data_save = []
     while ssp.config.run():
         path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
@@ -790,9 +790,9 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
                         datasample = lfilter(b, a, datasample, axis=0)
                         
                     
-                    # axs[iradar].imshow(datasample, aspect='auto', cmap='viridis')
-                    # plt.title(f'{iradar}')
-                    # axs[iradar].axis("off")
+                    axs[iradar].imshow(datasample, aspect='auto', cmap='viridis')
+                    plt.title(f'{iradar}')
+                    axs[iradar].axis("off")
         print(f'Processed frame = {ssp.config.CurrentFrame}')
         ssp.utils.increaseCurrentFrame()
     if len(data_save)==3:
@@ -811,5 +811,5 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
         # np.save(os.path.join(ssp.config.temp_folder, 'Right.npy'),data_save[1])
         # np.save(os.path.join(ssp.config.temp_folder, 'Top.npy'),data_save[2])
 
-    # plt.tight_layout()
-    # plt.show()
+    plt.tight_layout()
+    plt.show()

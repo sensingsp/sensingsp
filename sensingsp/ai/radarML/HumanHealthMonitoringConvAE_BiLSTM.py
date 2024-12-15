@@ -31,6 +31,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import sensingsp as ssp
+import zipfile
+import requests
 
 def normalize_ecg(ecg_signal):
     ecg_signal = ecg_signal - np.median(ecg_signal)
@@ -112,7 +114,13 @@ class RadarECGDataset(Dataset):
         ecg_signal = torch.tensor(ecg_signal, dtype=torch.float32).unsqueeze(0)      # (1, 1024)
 
         return radar_signal, ecg_signal
-
+def printnninfo(Lay,s=""):
+    params = list(Lay.parameters())
+    for i, p in enumerate(params):
+        print(f"{s} Parameter {i} shape:", p.shape)
+def printnnshape(x,s=""):
+    return
+    print(s,x.shape)
 class Layer1_HumanHM(nn.Module):
     def __init__(self):
         super(Layer1_HumanHM, self).__init__()
@@ -120,47 +128,70 @@ class Layer1_HumanHM(nn.Module):
         # Sequence Input Layer: Assuming input dimension = (batch_size, 1, 1024)
         
         self.conv1 = nn.Conv1d(1, 3, kernel_size=4, padding='same')
-        self.layer_norm1 = nn.LayerNorm(1024)
+        printnninfo(self.conv1,"conv1")
+        self.layer_norm1 = nn.LayerNorm(3)
+        printnninfo(self.layer_norm1,"layer_norm1")
         self.dropout1 = nn.Dropout(0.2)
-        
         self.conv2 = nn.Conv1d(3, 8, kernel_size=64, stride=8, padding=28)
+        printnninfo(self.conv2,"conv2")
         self.relu2 = nn.ReLU()
         self.batch_norm2 = nn.BatchNorm1d(8)
+        printnninfo(self.batch_norm2,"batch_norm2")
         self.dropout2 = nn.Dropout(0.2)
         
         self.maxpool1 = nn.MaxPool1d(kernel_size=2, stride=1,padding=1, dilation=2)
-        
+
         self.conv3 = nn.Conv1d(8, 8, kernel_size=32, stride=4, padding=14)
+        printnninfo(self.conv3,"conv3")
         self.relu3 = nn.ReLU()
         self.batch_norm3 = nn.BatchNorm1d(8)
+        printnninfo(self.batch_norm3,"batch_norm3")
         
         # MaxPooling1d (kernel size 2, padding same)
         self.maxpool2 = nn.MaxPool1d(kernel_size=2, stride=1,padding=1, dilation=2)
         
         self.transposed_conv1 = nn.ConvTranspose1d(8, 8, kernel_size=32, stride=4,padding=14)
+        printnninfo(self.transposed_conv1,"transposed_conv1")
         self.relu4 = nn.ReLU()
         
         self.transposed_conv2 = nn.ConvTranspose1d(8, 8, kernel_size=64, stride=8, padding=28)
+        printnninfo(self.transposed_conv2,"transposed_conv2")
         
         # BiLSTM Layer (8 units)
-        self.bilstm = nn.LSTM(input_size=64, hidden_size=8, num_layers=1, batch_first=True, bidirectional=True)
+        # self.bilstm = nn.LSTM(input_size=8, hidden_size=16, num_layers=1, batch_first=True, bidirectional=True)
+        self.bilstm = nn.LSTM(input_size=8,        # Number of input features (C from the MATLAB diagram)
+                hidden_size=8,        # Number of hidden units per direction
+                num_layers=1,         # Single layer
+                bidirectional=True,   # Enable bidirectionality
+                batch_first=False     # Matches MATLAB's default time-major format
+            )
+        printnninfo(self.bilstm,"bilstm")
         
         # Fully Connected Layers
-        self.fc1 = nn.Linear(16, 4)  
+        self.fc1 = nn.Linear(16, 4)
+        printnninfo(self.fc1,"fc1")  
         self.fc2 = nn.Linear(4, 2)
+        printnninfo(self.fc1,"fc2")
         self.fc3 = nn.Linear(2, 1)
+        printnninfo(self.fc1,"fc3")
 
     def forward(self, x):
         # x shape: (batch_size, 1, 1024)
-        
+        printnnshape(x,"input")
         x = self.conv1(x)
+        printnnshape(x,"conv1")
         
+        x = x.permute(0, 2, 1)
         x = self.layer_norm1(x)  # LayerNorm expects (batch_size, seq_len, num_features)
+        x = x.permute(0, 2, 1)
+        printnnshape(x,"layer_norm1")
         
         x = self.dropout1(x)
+        printnnshape(x,"dropout1")
         
         
         x = self.conv2(x)
+        printnnshape(x,"conv2")
         
         x = self.relu2(x)
         
@@ -170,9 +201,11 @@ class Layer1_HumanHM(nn.Module):
         
 
         x = self.maxpool1(x)
+        printnnshape(x,"maxpool1")
         
         
         x = self.conv3(x)
+        printnnshape(x,"conv3")
         
         x = self.relu3(x)
         
@@ -180,29 +213,37 @@ class Layer1_HumanHM(nn.Module):
         
 
         x = self.maxpool2(x)
+        printnnshape(x,"maxpool2")
         
         
         x = self.transposed_conv1(x)
+        printnnshape(x,"transposed_conv1")
         
         x = self.relu4(x)
         
         
         x = self.transposed_conv2(x)
+        printnnshape(x,"transposed_conv2")
         
 
         x = x.permute(0, 2, 1)  # LSTM expects (batch_size, seq_len, features)
         x, _ = self.bilstm(x)
+        printnnshape(x,"bilstm")
         # x = x.permute(0, 2, 1)
         
         
         # Fully Connected Layers
         x = self.fc1(x)  # Take the output of the last time step
+        printnnshape(x,"fc1")
         
         x = self.fc2(x)
+        printnnshape(x,"fc2")
         
         x = self.fc3(x)
+        printnnshape(x,"fc3")
         
         x = x.permute(0, 2, 1)
+        printnnshape(x,"last")
         
 
         return x
@@ -668,12 +709,27 @@ class RadarHumanHMApp(QMainWindow):
 
             # Download the ZIP file
             print("Downloading the ZIP file...")
-            # response = requests.get(url, stream=True)
-            # datasets_path = os.path.join(ssp.config.temp_folder, "datasets")
-            # if not os.path.exists(datasets_path):
-            #     os.makedirs(datasets_path)
-            # zip_path = os.path.join(ssp.config.temp_folder, "datasets", "SynchronizedRadarECGData.zip")
-        
+            response = requests.get(url, stream=True)
+            datasets_path = os.path.join(ssp.config.temp_folder, "datasets")
+            if not os.path.exists(datasets_path):
+                os.makedirs(datasets_path)
+            zip_path = os.path.join(ssp.config.temp_folder, "datasets", "SynchronizedRadarECGData.zip")
+            # Save the ZIP file locally
+            with open(zip_path, "wb") as f:
+                f.write(response.content)
+            print("Download complete!")
+            
+            
+            # Extract the ZIP file
+            print("Extracting the ZIP file...")
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(zip_folder)
+            print(f"Data extracted to {zip_folder}")
+            
+            # Clean up: Remove the ZIP file
+            os.remove(zip_path)
+            print("Temporary ZIP file removed.")
+            
         dataset_folder = zip_folder
         trainVal_radar_dir = os.path.join(dataset_folder, "trainVal", "radar")
         trainVal_ecg_dir = os.path.join(dataset_folder, "trainVal", "ecg")
@@ -689,8 +745,8 @@ class RadarHumanHMApp(QMainWindow):
         val_size = len(self.trainVal_dataset) - train_size
         self.train_dataset, self.val_dataset = random_split(self.trainVal_dataset, [train_size, val_size])
         
-        batch_size = self.batch_size_input.value() *0+1
-        self.train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        batch_size = self.batch_size_input.value() #*0+1
+        self.train_loader = DataLoader(self.train_dataset, batch_size=batch_size)
         self.val_loader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
         self.test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -842,7 +898,7 @@ class RadarHumanHMApp(QMainWindow):
         
         self.model.to(self.device)
             
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
         learning_rate = self.learning_rate_input.value()*1e-3
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
 
@@ -864,72 +920,75 @@ class RadarHumanHMApp(QMainWindow):
         matlab_t_index = [] 
         matlab_v_index = []
         
-        
+        running_loss = []
+            
         for epoch in range(num_epochs):
             val_loader_iter = iter(self.val_loader)
         # ---- Training ----
             self.model.train()
-            running_loss = 0.0
             for inputs, labels in self.train_loader:
+                # print(inputs.mean(),labels.mean())
                 inputs = inputs.to(self.device)  # shape [B,3,90,189]
                 labels = labels.to(self.device)
 
                 self.optimizer.zero_grad()
+                # printnnshape(inputs)
                 outputs = self.model(inputs)  # shape [B, num_classes]
-                loss = self.criterion(outputs, labels)
+                # print((outputs-labels).mean())
+                
+                # loss1 = self.criterion(outputs, labels)
+                mse = F.mse_loss(outputs, labels, reduction='none')  # Compute element-wise MSE
+                loss = torch.sum(mse,dim=2)
+                loss = torch.mean(loss)
+                 
                 loss.backward()
                 self.optimizer.step()
 
-                running_loss += loss.item() * labels.size(0)
-                _, preds = torch.max(outputs, 1)
+                running_loss0 = loss.item()
+                running_loss.append(running_loss0)
+                print(epoch,running_loss0)
+                # Validation_count+=1
+                # if Validation_count==1 or Validation_count>Validation_frequency:
+                #     Validation_count=1
+                #     self.model.eval()
+                #     with torch.no_grad():
+                #         inputs, labels = next(val_loader_iter)
+                #         inputs = inputs.to(self.device)
+                #         labels = labels.to(self.device)
 
-                matlab_acc = 100.0 * torch.sum(preds == labels).item() / labels.size(0) 
-                matlab_loss = loss.item()
-                matlab_acc_t.append(matlab_acc)
-                matlab_loss_t.append(matlab_loss)
-                matlab_t_index.append(len(matlab_acc_t))
-                Validation_count+=1
-                if Validation_count==1 or Validation_count>Validation_frequency:
-                    Validation_count=1
-                    self.model.eval()
-                    with torch.no_grad():
-                        inputs, labels = next(val_loader_iter)
-                        inputs = inputs.to(self.device)
-                        labels = labels.to(self.device)
+                #         outputs = self.model(inputs)
+                #         loss = self.criterion(outputs, labels)
 
-                        outputs = self.model(inputs)
-                        loss = self.criterion(outputs, labels)
-
-                        _, preds = torch.max(outputs, 1)
+                #         _, preds = torch.max(outputs, 1)
                         
-                        matlab_acc = 100.0 * torch.sum(preds == labels).item() / labels.size(0) 
-                        matlab_loss = loss.item()
-                        matlab_acc_v.append(matlab_acc)
-                        matlab_loss_v.append(matlab_loss)
-                        matlab_v_index.append(len(matlab_acc_t))
-                        if len(matlab_loss_v)==1:
-                            best_loss=matlab_loss+1
+                #         matlab_acc = 100.0 * torch.sum(preds == labels).item() / labels.size(0) 
+                #         matlab_loss = loss.item()
+                #         matlab_acc_v.append(matlab_acc)
+                #         matlab_loss_v.append(matlab_loss)
+                #         matlab_v_index.append(len(matlab_acc_t))
+                #         if len(matlab_loss_v)==1:
+                #             best_loss=matlab_loss+1
 
 
-                        if matlab_loss < best_loss:
-                            best_loss = matlab_loss
-                            torch.save(self.model.state_dict(), self.savebestmodelpath)
-                    self.model.train()
+                #         if matlab_loss < best_loss:
+                #             best_loss = matlab_loss
+                #             torch.save(self.model.state_dict(), self.savebestmodelpath)
+                #     self.model.train()
                 
                 
                 ax[0].clear()
-                ax[0].plot(matlab_t_index,matlab_acc_t)
-                ax[0].plot(matlab_v_index,matlab_acc_v,'--o')
-                ax[0].set_title(f"Epoch {epoch + 1}")
-                ax[0].set_xlabel("Iteration")
-                ax[0].set_ylabel("Accuracy")
-                ax[0].grid(True) 
-                ax[1].clear()
-                ax[1].plot(matlab_t_index,matlab_loss_t)
-                ax[1].plot(matlab_v_index,matlab_loss_v,'--o')
-                ax[1].set_xlabel("Iteration")
-                ax[1].set_ylabel("Loss")
-                ax[1].grid(True) 
+                ax[0].plot(running_loss)
+                # ax[0].plot(matlab_v_index,matlab_acc_v,'--o')
+                # ax[0].set_title(f"Epoch {epoch + 1}")
+                # ax[0].set_xlabel("Iteration")
+                # ax[0].set_ylabel("Accuracy")
+                # ax[0].grid(True) 
+                # ax[1].clear()
+                # ax[1].plot(matlab_t_index,matlab_loss_t)
+                # ax[1].plot(matlab_v_index,matlab_loss_v,'--o')
+                # ax[1].set_xlabel("Iteration")
+                # ax[1].set_ylabel("Loss")
+                # ax[1].grid(True) 
                 plt.draw()
                 plt.pause(0.001)
                 plt.gcf().canvas.flush_events()

@@ -813,3 +813,64 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
 
     plt.tight_layout()
     plt.show()
+
+
+def deform_scenario_1():
+    ssp.utils.delete_all_objects()
+    # === Create Armature (Bones) ===
+    # Add a new armature object
+    bpy.ops.object.armature_add(enter_editmode=True, location=(0, 0, 0))
+    armature = bpy.context.object
+    armature.name = "HandArmature"
+
+    # Move the armature to the desired position
+    bpy.ops.transform.translate(value=(0, .5, 0))
+
+    # Extrude a new bone from the initial bone
+    bpy.ops.armature.extrude_move(
+        TRANSFORM_OT_translate={"value": (0, 0.7, 1.2)}
+    )
+
+    # Exit edit mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # === Create an Icosphere ===
+    bpy.ops.mesh.primitive_ico_sphere_add(radius=2, location=(0, 0, 0),subdivisions=5)
+    icosphere = bpy.context.object
+
+    # === Parent the Icosphere to the Armature ===
+    # Select both objects (armature must be active)
+    bpy.ops.object.select_all(action='DESELECT')
+    icosphere.select_set(True)
+    armature.select_set(True)
+    bpy.context.view_layer.objects.active = armature
+
+    # Parent the icosphere to the armature
+    bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+
+    # Deselect all objects for clarity
+    bpy.ops.object.select_all(action='DESELECT')
+
+    # === Switch to Pose Mode and Animate Bone ===
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='POSE')
+
+    # Access the pose bone
+    pose_bone = bpy.context.object.pose.bones[1]
+
+    # Set keyframe at frame 1
+    bpy.context.scene.frame_set(1)
+    pose_bone.rotation_mode = 'XYZ'  # Ensure rotation mode is Euler
+    pose_bone.rotation_euler.z = -1.26854
+    pose_bone.keyframe_insert(data_path="rotation_euler")
+
+    # Set keyframe at frame 200
+    bpy.context.scene.frame_set(250)
+    pose_bone.rotation_euler.z = -12.88674
+    pose_bone.keyframe_insert(data_path="rotation_euler")
+
+    # Exit pose mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # === Save Blender File ===
+    ssp.utils.save_Blender()

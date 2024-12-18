@@ -1,4 +1,5 @@
 import numpy as np
+# from scipy.signal import chirp
 
 def barker_code(n):
     """Generate a Barker code of length n."""
@@ -97,3 +98,60 @@ def gaussian_waveform(N, mean=0.0, std_dev=1.0):
     # Compute the Gaussian waveform
     gaussian = np.exp(-((x - mean) ** 2) / (2 * std_dev ** 2))
     return gaussian
+
+
+def p1_code(length):
+    """
+    Generate a P1 phase code of given length.
+    """
+    n = int(np.sqrt(length))
+    if n ** 2 != length:
+        raise ValueError("P1 code length must be a perfect square.")
+    m = np.arange(n)
+    phase = np.pi * m * m / n
+    code = np.exp(1j * phase)
+    return np.kron(code, code)
+
+def p2_code(length):
+    """
+    Generate a P2 phase code of given length.
+    """
+    n = int(np.sqrt(length))
+    if n ** 2 != length:
+        raise ValueError("P2 code length must be a perfect square.")
+    m = np.arange(n)
+    phase = np.pi * (m - n // 2) ** 2 / n
+    code = np.exp(1j * phase)
+    return np.kron(code, code)
+
+def p3_code(length):
+    """
+    Generate a P3 phase code of given length.
+    """
+    n = length
+    m = np.arange(n)
+    phase = 2 * np.pi * m * m / n
+    code = np.exp(1j * phase)
+    return code
+
+def p4_code(length):
+    """
+    Generate a P4 phase code of given length.
+    """
+    n = length
+    m = np.arange(n)
+    phase = 2 * np.pi * m / n
+    code = np.exp(1j * phase)
+    return code
+
+def zadoff_chu_code(length, sequence_index):
+    """
+    Generate a Zadoff-Chu phase code of given length and sequence index.
+    """
+    n = length
+    if np.gcd(n, sequence_index) != 1:
+        raise ValueError("Length and sequence index must be coprime.")
+    m = np.arange(n)
+    phase = np.pi * sequence_index * m * (m + 1) / n
+    code = np.exp(1j * phase)
+    return code

@@ -14,5 +14,6 @@ from . import probe
 from . import raytracing
 from . import visualization
 from . import ai
+from . import hardware
 from .config import Config
 config = Config()

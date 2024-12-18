@@ -815,27 +815,25 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
     plt.show()
 
 
-def deform_scenario_1():
+def deform_scenario_1(angLim=30,Lengths = [.2,.1,.1],elps=[.25,.1,.5],sbd=4,cycles=8,cycleHLen=15):
     ssp.utils.delete_all_objects()
+
     # === Create Armature (Bones) ===
     # Add a new armature object
-    bpy.ops.object.armature_add(enter_editmode=True, location=(0, 0, 0))
+    bpy.ops.object.armature_add(enter_editmode=True, location=(0, 0, 0), radius=Lengths[0])
     armature = bpy.context.object
-    armature.name = "HandArmature"
-
-    # Move the armature to the desired position
-    bpy.ops.transform.translate(value=(0, .5, 0))
+    armature.name = "sspDeformArmature"
 
     # Extrude a new bone from the initial bone
     bpy.ops.armature.extrude_move(
-        TRANSFORM_OT_translate={"value": (0, 0.7, 1.2)}
+        TRANSFORM_OT_translate={"value": (0, 0, Lengths[1])}
     )
-
+    bpy.ops.armature.extrude_move(TRANSFORM_OT_translate={"value": (0, 0, Lengths[2])})
     # Exit edit mode
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # === Create an Icosphere ===
-    bpy.ops.mesh.primitive_ico_sphere_add(radius=2, location=(0, 0, 0),subdivisions=5)
+    bpy.ops.mesh.primitive_ico_sphere_add(location=(0, 0, 0), scale=(elps[0],elps[1], elps[2]), subdivisions=sbd)
     icosphere = bpy.context.object
 
     # === Parent the Icosphere to the Armature ===
@@ -855,22 +853,55 @@ def deform_scenario_1():
     bpy.context.view_layer.objects.active = armature
     bpy.ops.object.mode_set(mode='POSE')
 
-    # Access the pose bone
+    # Access the pose bone (second bone in the armature)
     pose_bone = bpy.context.object.pose.bones[1]
+    pose_bone.rotation_mode = 'XYZ'
+    pose_bone2 = bpy.context.object.pose.bones[2]
+    pose_bone2.rotation_mode = 'XYZ'
+    for i in range(cycles):
+        bpy.context.scene.frame_set(1+i*cycleHLen*2)
+        pose_bone.rotation_euler = (np.radians(angLim), 0.0, 0.0)  # Initial rotation (no rotation)
+        pose_bone2.rotation_euler = (np.radians(-angLim), 0.0, 0.0)  # Initial rotation (no rotation)
+        pose_bone.keyframe_insert(data_path="rotation_euler")
+        pose_bone2.keyframe_insert(data_path="rotation_euler")
 
-    # Set keyframe at frame 1
-    bpy.context.scene.frame_set(1)
-    pose_bone.rotation_mode = 'XYZ'  # Ensure rotation mode is Euler
-    pose_bone.rotation_euler.z = -1.26854
-    pose_bone.keyframe_insert(data_path="rotation_euler")
-
-    # Set keyframe at frame 200
-    bpy.context.scene.frame_set(250)
-    pose_bone.rotation_euler.z = -12.88674
-    pose_bone.keyframe_insert(data_path="rotation_euler")
+        bpy.context.scene.frame_set(cycleHLen+i*cycleHLen*2)
+        pose_bone.rotation_euler = (np.radians(-angLim), 0, 0.0)  # Simulate Y-direction movement with rotation
+        pose_bone2.rotation_euler = (np.radians(angLim), 0, 0.0)  # Simulate Y-direction movement with rotation
+        pose_bone.keyframe_insert(data_path="rotation_euler")
+        pose_bone2.keyframe_insert(data_path="rotation_euler")
 
     # Exit pose mode
     bpy.ops.object.mode_set(mode='OBJECT')
 
+    # === Save Blender File ===
+    ssp.utils.save_Blender()
+
+def handGesture_simple(G=1):
+    ssp.utils.delete_all_objects()
+
+    # === Create an Icosphere ===
+    bpy.ops.mesh.primitive_ico_sphere_add(location=(0, 0, 0), scale=(.2,.15, .02), subdivisions=4)
+    icosphere = bpy.context.object
+    if G==1:
+        fr=1
+        for i in range(3):
+            bpy.context.scene.frame_set(fr);fr+=10
+            icosphere.location=(0, 0, -.4)
+            icosphere.keyframe_insert(data_path="location")
+            bpy.context.scene.frame_set(fr);fr+=110
+            icosphere.location=(0, 0, 0)
+            icosphere.keyframe_insert(data_path="location")
+    elif G==2:
+        fr=1
+        for i in range(3):
+            bpy.context.scene.frame_set(fr);fr+=10
+            icosphere.location=(0, 0, 0)
+            icosphere.keyframe_insert(data_path="location")
+            bpy.context.scene.frame_set(fr);fr+=110
+            icosphere.location=(0, 0, -.4)
+            icosphere.keyframe_insert(data_path="location")
+        
+    
     # === Save Blender File ===
     ssp.utils.save_Blender()

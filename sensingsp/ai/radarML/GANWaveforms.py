@@ -33,6 +33,7 @@ from PyQt5.QtCore import Qt
 import sensingsp as ssp
 import requests
 import zipfile
+import random
 class RadarWaveformDataset(Dataset):
     def __init__(self, radar_dir, ecg_dir, transform_ecg=True):
         self.radar_files = sorted(glob.glob(os.path.join(radar_dir, '*.mat')))
@@ -90,7 +91,7 @@ class LayersGenerator(nn.Module):
         self.fc = nn.Linear(128, 4096)  # Fully Connected Layer
         
         # Define transposed convolutional layers
-        self.transposed_conv_1 = nn.ConvTranspose2d(128, 512, kernel_size=5, stride=2, padding=2, output_padding=1)
+        self.transposed_conv_1 = nn.ConvTranspose2d(4096, 128, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.transposed_conv_2 = nn.ConvTranspose2d(512, 256, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.transposed_conv_3 = nn.ConvTranspose2d(256, 128, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.transposed_conv_4 = nn.ConvTranspose2d(128, 64, kernel_size=5, stride=2, padding=2, output_padding=1)
@@ -387,6 +388,19 @@ class RadarWaveformApp(QMainWindow):
         self.savebestmodelpath = os.path.join(ssp.config.temp_folder,"best_model.pth")
 
     def initdataset(self):
+        
+        if 0:
+            # Parameters
+            num_samples = 13700
+            length = 256
+            sample_rate = 1e6
+            save_dir = "phase_coded_waveforms"
+
+            # Generate the dataset
+            dataset = create_dataset(num_samples, length, sample_rate, save_dir)
+
+            
+            
         zip_path = "GenerateNovelRadarWaveformsData.zip"
         url = "https://ssd.mathworks.com/supportfiles/phased/data/GenerateNovelRadarWaveformsData.zip"
         zip_folder = self.default_folder
@@ -425,48 +439,24 @@ class RadarWaveformApp(QMainWindow):
                 zip_ref.extractall(sdpath)
             os.remove(sdfile)
             
-        dataset_folder = zip_folder
-        trainVal_radar_dir = os.path.join(dataset_folder, "trainVal", "radar")
-        trainVal_ecg_dir = os.path.join(dataset_folder, "trainVal", "ecg")
-        test_radar_dir = os.path.join(dataset_folder, "test", "radar")
-        test_ecg_dir = os.path.join(dataset_folder, "test", "ecg")
-
-        self.trainVal_dataset = RadarECGDataset(trainVal_radar_dir, trainVal_ecg_dir, transform_ecg=True)
-        test_dataset = RadarECGDataset(test_radar_dir, test_ecg_dir, transform_ecg=True)
-        # print(trainVal_dataset[0][0].shape,trainVal_dataset[0][1].shape)
-        # torch.Size([1, 1024]) torch.Size([1, 1024])
-        train_ratio = self.split_train_input.value()
-        train_size = int(train_ratio * len(self.trainVal_dataset))
-        val_size = len(self.trainVal_dataset) - train_size
-        self.train_dataset, self.val_dataset = random_split(self.trainVal_dataset, [train_size, val_size])
+        numChips = 256
+        sampleRate = 1e6
+        PRF = sampleRate/numChips
+        chipWidth = 1/sampleRate
+        dataset_folder = os.path.join(zip_folder, "GenerateNovelRadarWaveformsData", "SyntheticPhaseCodedRadarWaveforms")
+        self.dataset_files = sorted(glob.glob(os.path.join(dataset_folder, '*.mat')))
+        # N = len(self.dataset_files) # 13700
         
-        batch_size = self.batch_size_input.value() *0+1
-        self.train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
-        self.test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
-
-        # clutter_removal = self.clutter_removal_checkbox.isChecked() 
-        # self.dataset = RadarGestureDataset(data_folder=self.default_folder, clutter_removal=clutter_removal,max_folder_number=self.folderN_input.value(),PercentBar=True)
-        
-        
-        # self.combobox.clear()
-        # self.combobox.addItems(self.dataset.gestureVocabulary)
-
-        
-        # total_samples = len(self.dataset)  # total number of gesture samples
+        # self.dataset = RadarECGDataset(dataset_folder)
         # train_ratio = self.split_train_input.value()
-        # val_ratio = self.split_val_input.value()
-
-        # train_size = int(train_ratio * total_samples)
-        # val_size = int(val_ratio * total_samples)
-        # test_size = total_samples - train_size - val_size
-
-        # train_dataset, val_dataset, test_dataset = random_split(self.dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42))
-        # batch_size = self.batch_size_input.value() 
-        # self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-        # self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
-        # self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
-
+        # train_size = int(train_ratio * len(self.trainVal_dataset))
+        # val_size = len(self.trainVal_dataset) - train_size
+        # self.train_dataset, self.val_dataset = random_split(self.dataset, [train_size, val_size])
+        
+        # batch_size = self.batch_size_input.value() *0+1
+        # self.train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+        # self.val_loader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
+        
     def browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Dataset Folder", self.default_folder)
         if folder:
@@ -574,7 +564,7 @@ class RadarWaveformApp(QMainWindow):
     def loaddataset(self):
         self.status_label.setText("Status: Loading...")
         self.initdataset()
-        self.status_label.setText(f"Status: Dataset is loaded {len(self.train_dataset)}")
+        self.status_label.setText(f"Status: Dataset files : {len(self.dataset_files)}")
         
     def def_model(self):
         # self.model = MultiInputModel(num_classes=self.num_classes)
@@ -881,3 +871,51 @@ def runradarWaveformapp():
 # ----------------------------
 if __name__ == "__main__":
     runradarWaveformapp()
+    
+
+def create_dataset(num_samples, length, sample_rate, save_dir):
+    """
+    Create a synthetic dataset of phase-coded waveforms.
+
+    Parameters:
+    - num_samples: Number of waveforms to generate
+    - length: Length of each waveform
+    - sample_rate: Sample rate of the waveforms
+    - save_dir: Directory to save the dataset
+    """
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    phase_code_types = ['Frank', 'P1', 'P2', 'P3', 'P4', 'Zadoff-Chu']
+    zadoff_chu_indices = [1, 5, 7]
+
+    dataset = []
+
+    for i in range(num_samples):
+        code_type = random.choice(phase_code_types)
+
+        if code_type == 'Frank':
+            waveform = ssp.radar.radarwaveforms.frank_code(length)
+        elif code_type == 'P1':
+            waveform = ssp.radar.radarwaveforms.p1_code(length)
+        elif code_type == 'P2':
+            waveform = ssp.radar.radarwaveforms.p2_code(length)
+        elif code_type == 'P3':
+            waveform = ssp.radar.radarwaveforms.p3_code(length)
+        elif code_type == 'P4':
+            waveform = ssp.radar.radarwaveforms.p4_code(length)
+        elif code_type == 'Zadoff-Chu':
+            seq_idx = random.choice(zadoff_chu_indices)
+            waveform = ssp.radar.radarwaveforms.zadoff_chu_code(length, seq_idx)
+        else:
+            raise ValueError(f"Unknown code type: {code_type}")
+
+        dataset.append((waveform, code_type))
+
+        # Save waveform to file
+        np.save(os.path.join(save_dir, f"waveform_{i}.npy"), waveform)
+
+    print(f"Dataset created with {num_samples} samples in {save_dir}.")
+    return dataset
+
+

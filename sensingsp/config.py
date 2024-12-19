@@ -90,6 +90,7 @@ class Config():
                 ('Balanced RayTracing', "Balanced RayTracing", "Balanced RayTracing"),
                 ('Advanced Intense RayTracing', "Advanced Intense RayTracing", "Advanced Intense RayTracing"),
             ]
+        self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
         self.appSTYLESHEET = """
             /* General */
             QWidget {

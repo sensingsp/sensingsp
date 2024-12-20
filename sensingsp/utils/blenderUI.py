@@ -4,6 +4,7 @@ import numpy as np
 import bpy
 import os
 import tempfile
+
 def define_settings():
     if not("Simulation Settings" in bpy.data.objects):
         bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))

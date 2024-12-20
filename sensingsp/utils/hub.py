@@ -3,7 +3,7 @@ import os
 import requests
 import json
 import random
-
+import zipfile
 
 def download_file(file_path, save_path):
     """Downloads a file from GitHub and saves it locally."""
@@ -134,3 +134,28 @@ def available_files():
         else:
             print("  (No files available in this category)")
         
+def download_zipfile_extract_remove(url,zfile,save_path):
+    os.makedirs(save_path, exist_ok=True)
+
+    print(f"Downloading {url+zfile}...")
+    response = requests.get(url+zfile, stream=True)
+    if response.status_code == 200:
+        with open(os.path.join(save_path,zfile), "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        print(f"Downloaded: {os.path.join(save_path,zfile)}")
+        # Extract the ZIP file
+        print("Extracting the ZIP file...")
+        with zipfile.ZipFile(os.path.join(save_path,zfile), "r") as zip_ref:
+            zip_ref.extractall(save_path)
+        print(f"Data extracted to {save_path}")
+        
+        # Clean up: Remove the ZIP file
+        os.remove(os.path.join(save_path,zfile))
+        print("Temporary ZIP file removed.")
+        
+        return save_path
+    else:
+        print(f"Failed to download {url}. HTTP {response.status_code}")
+        return None
+

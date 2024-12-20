@@ -13,6 +13,15 @@ import time
 import matplotlib.pyplot as plt
 import cv2
 
+def initialize_environment():
+   ssp.utils.delete_all_objects()
+def initialize_simulation():
+  ssp.utils.define_settings()
+  ssp.utils.set_frame_start_end(start=1,end=2)
+  ssp.utils.save_Blender()
+  ssp.utils.trimUserInputs() 
+  ssp.config.restart()
+
 def set_RayTracing_advanced_intense():  
   bpy.data.objects["Simulation Settings"]["do RayTracing LOS"] = True
   bpy.data.objects["Simulation Settings"]["do RayTracing Simple"] = False

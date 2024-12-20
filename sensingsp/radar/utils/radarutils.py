@@ -15,9 +15,11 @@ import sensingsp as ssp
 from enum import Enum
 class RadarSensorsCategory(Enum):
     TI_AWR1642 = 1
-    RED = 2
-    GREEN = 3
-    BLUE = 4
+    TI_IWR6843 = 2
+    TI_AWR2243 = 3
+    TI_AWR2944 = 4
+    TI_Cascade_AWR2243 = 5
+    SISO_mmWave76GHz = 6
 
 class RadarSpecJSON:
     def __init__(self, model=None, frequency_range=None, bandwidth=None, transmit_channels=None, receive_channels=None,
@@ -385,7 +387,10 @@ def predefined_array_configs_TI_Cascade_AWR2243(isuite, iradar, location, rotati
         rx.parent = empty
         rx.data.lens = 10
     
+
     empty["TXRXPos"]=[tx_positions,rx_positions]
+    
+    empty["antenna2azelIndex"]=[]
     return empty
 
 def make_Radar_DAR(radar,N=[3,1],d=[.3,.3]):
@@ -1789,6 +1794,7 @@ def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0)
         empty: The empty parent object used for positioning and orientation.
     """
     # Create the cube representing the target
+    # size /=2.0
     bpy.ops.mesh.primitive_cube_add(
         size=size,
         align='WORLD',
@@ -1830,7 +1836,7 @@ def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0)
 
     return cube, empty
 
-def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642):
+def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
     suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
     suiteIndex=len(suite_planes)
     if len(suite_planes)==0:
@@ -1839,9 +1845,12 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642):
     obj = suite_planes[-1]
     radar_planes = ssp.environment.BlenderSuiteFinder().find_radar_planes(obj)
     radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
-    
+    if radarSensor==RadarSensorsCategory.TI_Cascade_AWR2243:
+        radar = ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[1])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+        
+        return radar
     if radarSensor==RadarSensorsCategory.TI_AWR1642:
-        radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+        radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[1])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
         rangeResolution,radialVelocityResolution,N_ADC,ChirpTimeMax,CentralFreq=0.039,0.13,256,60e-6,76e9
         ssp.radar.utils.FMCW_Chirp_Parameters(rangeResolution,N_ADC,ChirpTimeMax,radialVelocityResolution,CentralFreq)
 

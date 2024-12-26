@@ -15,6 +15,7 @@ import cv2
 
 def initialize_environment():
    ssp.utils.delete_all_objects()
+   ssp.utils.define_settings()
 def initialize_simulation():
   ssp.utils.define_settings()
   ssp.utils.set_frame_start_end(start=1,end=2)

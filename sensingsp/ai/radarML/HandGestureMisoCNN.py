@@ -31,6 +31,38 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 import sensingsp as ssp
 
+def initialize_weights_scaled_kaiming(m):
+    if isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.Linear):
+        nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
+def initialize_weights_xavier(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
+
+def initialize_weights_lecun(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        nn.init.normal_(m.weight, mean=0, std=1 / (m.weight.size(1) ** 0.5))
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+    elif isinstance(m, nn.BatchNorm2d):
+        nn.init.constant_(m.weight, 1)
+        nn.init.constant_(m.bias, 0)
+
+
 class RadarGestureDataset(Dataset):
     def __init__(self, data_folder, max_folder_number=1e6, clutter_removal=True,PercentBar=False):
         self.data_folder = data_folder
@@ -55,6 +87,8 @@ class RadarGestureDataset(Dataset):
         class_idx = 0
         folder_number = 0
         self.Max_folder_available = 0
+        if data_folder=='':
+            return
         for subject_folder in sorted(os.listdir(data_folder)):
             subject_path = os.path.join(data_folder, subject_folder)
             if not os.path.isdir(subject_path):
@@ -210,8 +244,8 @@ class MultiInputModel(nn.Module):
         # Flatten for FC
         combined = combined.view(combined.size(0), -1)  # (N,64*5*11)
         out = self.fc(combined)
+        # out = nn.functional.softmax(out, dim=1)
         return out
-
 
 # ----------------------------
 # Run Application Function
@@ -472,6 +506,24 @@ class RadarMisoCNNApp(QMainWindow):
                     Gi = f"G{preds.item()}"
                     Gn = self.dataset.gestureVocabulary[preds.item()]
                     print(Gi,Gn)
+                    # Apply softmax to compute probabilities
+                    probabilities = nn.functional.softmax(outputs, dim=1)
+                    print("Class probabilities:")
+                    classes,softmax_probs=[],[]
+                    for idx, prob in enumerate(probabilities[0]):
+                        class_name = self.dataset.gestureVocabulary[idx]
+                        print(f"Class {class_name}: {prob:.4f} : {outputs[0,idx]:.4f}")
+                        classes.append(class_name)
+                        softmax_probs.append(prob)
+                    print("Class probabilities (visualized):")
+                    for idx, prob in enumerate(softmax_probs):
+                        bar_length = int(prob * 50)  # Scale probabilities to a length of 50
+                        print(f"Class {classes[idx]:<20}: {prob:.2f}: {'#' * bar_length}")
+                    plt.barh(classes, softmax_probs, color='skyblue')
+                    plt.title("Class Probabilities (Softmax)")
+                    plt.xlabel("Probability")
+                    plt.tight_layout()
+                    plt.show()
                 
                 radar=["Left","Top","Right"]
                 SourceLocations = np.array([[0, 0], [0.5, 0.5], [1, 0]])
@@ -544,6 +596,7 @@ class RadarMisoCNNApp(QMainWindow):
         # Model, Loss, Optimizer
         # -----------------------------
         self.model = MultiInputModel(num_classes=self.num_classes)
+        self.model.apply(initialize_weights_xavier)
         self.model.to(self.device)
             
         self.criterion = nn.CrossEntropyLoss()

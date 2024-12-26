@@ -1,130 +1,261 @@
+import threading
 import serial
-import serial.tools.list_ports
-from PyQt5.QtCore import pyqtSignal, QObject
-from PyQt5.QtWidgets import QWidget
+import time
+import struct
 
-class TISensor(QWidget):
+def read_config_file(file_path):
+    with open(file_path, 'r') as file:
+        commands = file.readlines()
+    return [cmd.strip() for cmd in commands if cmd.strip() and not cmd.strip().startswith('%')]
 
-    CommandPortSignal = pyqtSignal(str)
-    rangeProfileDetectedTargets = pyqtSignal(list, list, list)
-    tiTLVTypes = pyqtSignal(list)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.Commandport = None
-        self.Dataport = None
-        self.alldata = bytearray()
-        self.cloudPoints = []
+def find_magic_word(data):
+    MAGIC_WORD = [2, 1, 4, 3, 6, 5, 8, 7]
+    magic_word = bytearray(MAGIC_WORD)
+    for i in range(len(data) - len(magic_word) + 1):
+        if data[i:i + len(magic_word)] == magic_word:
+            return i
+    return -1
 
-    def print_ports(self):
-        ports = list(serial.tools.list_ports.comports())
-        for port in ports:
-            print(f"{port.device} - {port.description}")
+def parse_header(data, offset):
+    header_format = '<QIIIIIIII'
+    header_size = struct.calcsize(header_format)
+    header = struct.unpack_from(header_format, data, offset)
+    return {
+        'magic_word': header[0],
+        'version': header[1],
+        'total_packet_length': header[2],
+        'platform': header[3],
+        'frame_number': header[4],
+        'time_cpu_cycles': header[5],
+        'num_detected_obj': header[6],
+        'num_tlvs': header[7],
+        'subframe_number': header[8],
+        'header_size': header_size
+    }
 
-    def set_ports(self, command_port_name, data_port_name):
-        self.Commandport = serial.Serial(
-            port=command_port_name, baudrate=115200, parity=serial.PARITY_NONE
-        )
-        self.Dataport = serial.Serial(
-            port=data_port_name, baudrate=921600, timeout=None
-        )
+def parse_tlv(data, offset):
+    tlv_header_format = '<II'
+    tlv_header_size = struct.calcsize(tlv_header_format)
+    tlv_type, tlv_length = struct.unpack_from(tlv_header_format, data, offset)
+    tlv_data = data[offset + tlv_header_size:offset + tlv_length]
+    return {
+        'type': tlv_type,
+        'length': tlv_length,
+        'data': tlv_data,
+        'tlv_header_size': tlv_header_size
+    }
 
-        if self.Commandport.is_open:
-            print("Command Port is Open")
+def parse_detected_objects(tlv_data):
+    detected_objects = []
+    object_format = '<ffff'
+    object_size = struct.calcsize(object_format)
+    for i in range(0, len(tlv_data), object_size):
+        x, y, z, velocity = struct.unpack_from(object_format, tlv_data, i)
+        detected_objects.append({'x': x, 'y': y, 'z': z, 'velocity': velocity})
+    return detected_objects
+
+def parse_range_profile(tlv_data):
+    range_profile = []
+    point_format = '<H'
+    point_size = struct.calcsize(point_format)
+    for i in range(0, len(tlv_data), point_size):
+        point = struct.unpack_from(point_format, tlv_data, i)[0]
+        range_profile.append(point / 512.0)  # Convert from Q9 format
+    return range_profile
+
+def parse_noise_profile(tlv_data):
+    noise_profile = []
+    point_format = '<H'
+    point_size = struct.calcsize(point_format)
+    for i in range(0, len(tlv_data), point_size):
+        point = struct.unpack_from(point_format, tlv_data, i)[0]
+        noise_profile.append(point / 512.0)  # Convert from Q9 format
+    return noise_profile
+
+class MMWaveDevice:
+    def __init__(self, config_port: str, data_port: str,
+                 config_baudrate: int = 115200, data_baudrate: int = 921600):
+        self.config_port = config_port
+        self.data_port = data_port
+        self.config_baudrate = config_baudrate
+        self.data_baudrate = data_baudrate
+
+        self.serial_config = None
+        self.serial_data = None
+
+        # Threading
+        self.data_thread = None
+        self.stop_event = threading.Event()
+
+        # Optionally store incoming data or parse it on the fly
+        self.data_buffer = bytearray()
+        self.decoded = []
+        self.connected = False
+
+    def connect(self):
+        """
+        Opens serial connections to the mmWave device and starts the data reading thread.
+        """
+        self.connected = True
+        try:
+            # Open config port
+            self.serial_config = serial.Serial(
+                port=self.config_port,
+                baudrate=self.config_baudrate,
+                timeout=1
+            )
+
+            # Open data port
+            self.serial_data = serial.Serial(
+                port=self.data_port,
+                baudrate=self.data_baudrate,
+                timeout=1
+            )
+            print(f"Connected to config port: {self.config_port}, data port: {self.data_port}")
+
+            # Start background thread to read data
+            self.stop_event.clear()
+            self.data_thread = threading.Thread(target=self._read_data_loop, daemon=True)
+            self.data_thread.start()
+        except serial.SerialException as e:
+            print(f"Error opening serial ports: {e}")
+            self.disconnect()
+            self.connected = False
+
+    def send_command(self, command: str):
+        """
+        Send a command to the mmWave device via the config port.
+
+        :param command: A string command to send (e.g. 'sensorStart\n').
+        """
+        if self.serial_config and self.serial_config.is_open:
+            # Ensure it ends with a newline (depends on your device’s command format)
+            if not command.endswith('\n'):
+                command += '\n'
+            self.serial_config.write(command.encode('utf-8'))
+            self.serial_config.flush()
+            print(f"Sent command: {command.strip()}")
+            # Read response until timeout
+            timeout = .5
+            end_time = time.time() + timeout
+            response = b""
+            while time.time() < end_time:
+                bytes_waiting = self.serial_config.in_waiting
+                if bytes_waiting > 0:
+                    # Read everything waiting in the buffer
+                    chunk = self.serial_config.read(bytes_waiting)
+                    response += chunk
+
+                    if b"mmwDemo:/>" in response:
+                        break
+                    # Extend the timeout slightly if new data continues to arrive
+                    # (optional: helps catch slower responses)
+                    end_time = time.time() + timeout
+                else:
+                    # If nothing new arrived, take a short break to let more data come in
+                    time.sleep(0.05)
+
+            # Convert bytes to string
+            response_str = response.decode('utf-8', errors='ignore').strip()
+            print(f"Response command: {response_str}")
+            print(f"________________")
+            
         else:
-            print("Command Port is Not Open!!!!")
+            print("Configuration port is not open. Cannot send command.")
 
-        if self.Dataport.is_open:
-            print("Data Port is Open")
-        else:
-            print("Data Port is Not Open!!!!")
+    def _read_data_loop(self):
+        """
+        Internal method run by the data thread, continuously reading data
+        from the mmWave device.
+        """
+        print("Data reading thread started.")
+        while not self.stop_event.is_set():
+            if self.serial_data and self.serial_data.is_open:
+                # Read available data from the data port
+                try:
+                    data = self.serial_data.read(512)
+                    if data:
+                        # Store or parse the incoming data
+                        self.data_buffer.extend(data)
+                        self.process_data()
 
-    def command_ready_read(self):
-        if self.Commandport and self.Commandport.is_open:
-            data = self.Commandport.read_all()
-            data_str = data.decode('utf-8', errors='ignore')
-            self.CommandPortSignal.emit(data_str)
-
-    def data_ready_read(self):
-        if self.Dataport and self.Dataport.is_open:
-            data = self.Dataport.read_all()
-            self.alldata.extend(data)
-
-            hdr = [2, 1, 4, 3, 6, 5, 8, 7]
-            hdr_index = -1
-
-            for i in range(len(data)):
-                if data[i:i+len(hdr)] == bytearray(hdr):
-                    hdr_index = i
+                        # print(f"Data read: {len(data)}, {len(self.data_buffer)}")
+                except serial.SerialException as e:
+                    print(f"Data reading error: {e}")
                     break
+                except UnicodeDecodeError as e:
+                    # Handle bytes that can't be decoded
+                    print(f"Decode error: {e}")
+            else:
+                # If port is not open, break the loop
+                break
+            # Adjust sleep time if needed to reduce CPU usage
+            time.sleep(0.001)
+        print("Data reading thread stopped.")
 
-            if hdr_index > -1:
-                # Process header and data
-                self.parse_data_packet(data[hdr_index:])
+    def disconnect(self):
+        """
+        Stops data thread and closes the serial ports.
+        """
+        print("Disconnecting device...")
+        # Signal the data loop to exit
+        self.stop_event.set()
 
-    def parse_data_packet(self, data):
-        types = []
+        # Close data thread gracefully
+        if self.data_thread and self.data_thread.is_alive():
+            self.data_thread.join(timeout=1)
 
-        hdr_length = 8
-        version_length = 4
-        total_packet_length_length = 4
-        platform_length = 4
-        frame_number_length = 4
-        time_cpu_cycles_length = 4
-        num_detected_obj_length = 4
-        num_tlvs_length = 4
-        subframe_number_length = 4
+        # Close ports
+        if self.serial_config and self.serial_config.is_open:
+            self.serial_config.close()
+        if self.serial_data and self.serial_data.is_open:
+            self.serial_data.close()
 
-        magic_word_offset = hdr_length
-        version_offset = magic_word_offset
-        total_packet_length_offset = version_offset + version_length
-        platform_offset = total_packet_length_offset + total_packet_length_length
-        frame_number_offset = platform_offset + platform_length
-        time_cpu_cycles_offset = frame_number_offset + frame_number_length
-        num_detected_obj_offset = time_cpu_cycles_offset + time_cpu_cycles_length
-        num_tlvs_offset = num_detected_obj_offset + num_detected_obj_length
-        subframe_number_offset = num_tlvs_offset + num_tlvs_length
+        print("Disconnected device.")
 
-        if len(data) > subframe_number_offset:
-            version = int.from_bytes(data[version_offset:version_offset + version_length], 'little')
-            total_packet_length = int.from_bytes(data[total_packet_length_offset:total_packet_length_offset + total_packet_length_length], 'little')
-            platform = int.from_bytes(data[platform_offset:platform_offset + platform_length], 'little')
-            frame_number = int.from_bytes(data[frame_number_offset:frame_number_offset + frame_number_length], 'little')
-            time_cpu_cycles = int.from_bytes(data[time_cpu_cycles_offset:time_cpu_cycles_offset + time_cpu_cycles_length], 'little')
-            num_detected_obj = int.from_bytes(data[num_detected_obj_offset:num_detected_obj_offset + num_detected_obj_length], 'little')
-            num_tlvs = int.from_bytes(data[num_tlvs_offset:num_tlvs_offset + num_tlvs_length], 'little')
-            subframe_number = int.from_bytes(data[subframe_number_offset:subframe_number_offset + subframe_number_length], 'little')
-
-            print(f"Version: {version}, Total Packet Length: {total_packet_length}, Platform: {platform}, Frame Number: {frame_number}, Time in CPU Cycles: {time_cpu_cycles}, Num Detected Obj: {num_detected_obj}, Num TLVs: {num_tlvs}, Subframe Number: {subframe_number}")
-
-            self.tiTLVTypes.emit([version, total_packet_length, platform, frame_number, time_cpu_cycles, num_detected_obj, num_tlvs, subframe_number])
-
-    def sensor_stop(self):
-        self.write_command("sensorStop")
-
-    def sensor_start(self):
-        self.write_command("sensorStart 0")
-
-    def write_command(self, command):
-        if self.Commandport and self.Commandport.is_open:
-            command_bytes = command.encode('utf-8') + b'\n'
-            self.Commandport.write(command_bytes)
-            self.Commandport.flush()
-            return len(command_bytes)
-        return 0
-
-# Example usage
-if __name__ == "__main__":
-    from PyQt5.QtWidgets import QApplication
-
-    app = QApplication([])
-
-    sensor = TISensor()
-    sensor.print_ports()
-    sensor.set_ports("COM1", "COM2")
-    sensor.command_ready_read()
-    sensor.data_ready_read()
-    sensor.sensor_start()
-    sensor.sensor_stop()
-
-    app.exec_()
+    def send_config_file(self,CONFIG_FILE):
+        config_commands = read_config_file(CONFIG_FILE)
+        for command in config_commands:
+            self.send_command(command)
+        time.sleep(0.05)
+    def process_data(self):
+        # self.data_buffer
+        if len(self.decoded)>1:
+            self.decoded = [self.decoded[-1]]
+        MinPackLen = 200
+        while True:
+            parsed_data = {}
+            magic_word_index = find_magic_word(self.data_buffer)
+            if magic_word_index == -1:
+                break
+            if len(self.data_buffer)<MinPackLen:
+                break
+            header = parse_header(self.data_buffer, magic_word_index)
+            # print(len(data),header['total_packet_length'])
+            if len(self.data_buffer) < header['total_packet_length']:
+                break
+            offset = magic_word_index + header['header_size']
+            for _ in range(header['num_tlvs']):
+                tlv = parse_tlv(self.data_buffer, offset)
+                offset += tlv['length']+2*4
+                if tlv['type'] == 1:
+                    1
+                    # print("objs")
+                    # 1#parsed_data['detected_objects'] = parse_detected_objects(tlv['data'])
+                elif tlv['type'] == 2:
+                    parsed_data['range_profile'] = parse_range_profile(tlv['data'])
+                    print(header['time_cpu_cycles']," range",len(parsed_data['range_profile']))
+                    # plot 
+                elif tlv['type'] == 3:
+                    parsed_data['noise_profile'] = parse_noise_profile(tlv['data'])
+                    # print("noise",len(parsed_data['noise_profile']))
+                    
+                elif tlv['type'] <20:
+                    1
+                else:
+                    print("!!!!!!!!",tlv['type'])
+                    # parsed_data['noise_profile'] = parse_noise_profile(tlv['data'])
+            self.decoded.append([parsed_data])
+            self.data_buffer = self.data_buffer[magic_word_index+header['total_packet_length']:]
+        

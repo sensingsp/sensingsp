@@ -1,6 +1,12 @@
 import numpy as np
 import scipy.io as sio
 import sensingsp as ssp
+import os
+def savemat_in_tmpfolder(filename,data_to_save):
+    savefilename = os.path.join(ssp.config.temp_folder,filename)
+    sio.savemat(savefilename, data_to_save)
+def file_in_tmpfolder(filename):
+    return os.path.join(ssp.config.temp_folder,filename)
 def saveMatFile(ProcessingOutputs):
     grid_points , grid_velocities , all_outputs = ProcessingOutputs
     data_to_save = {

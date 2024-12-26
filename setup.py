@@ -20,12 +20,13 @@ install_requires = [
     'torchviz>=0.0.2',            # Visualization of PyTorch models
     'torchsummary>=1.5.0',        # Summary of PyTorch models
     'PyWavelets>=1.7.0',
+    'pyserial>=3.5',
 ]
 
 # Define the setup
 setup(
     name='sensingsp',
-    version='1.3.0dev',
+    version='1.4.0',
     packages=find_packages(),
     install_requires=install_requires,
     url='https://sensingsp.github.io/',
@@ -33,10 +34,9 @@ setup(
     author='Moein Ahmadi',
     author_email='moein.ahmadi@uni.lu, gmoein@gmail.com',
     description=(
-        'SensingSP™: Open-source library for simulating electromagnetic sensing systems '
-        'and implementing signal processing and machine learning algorithms. Developed by '
-        'the Signal Processing Applications in Radar and Communications (SPARC) group at '
-        'the University of Luxembourg with support from IEE S.A.'
+        'SensingSP™ is an open-source library designed for simulating' 
+        'electromagnetic sensing systems and implementing signal processing' 
+        'and machine learning algorithms.'
     ),
     long_description=long_description,
     long_description_content_type='text/markdown',

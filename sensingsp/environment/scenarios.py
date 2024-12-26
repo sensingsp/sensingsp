@@ -681,17 +681,66 @@ def predefine_Hand_Gesture_3Xethru_Nature_paper():
     ssp.utils.set_RayTracing_balanced()
     ssp.utils.set_frame_start_end(start=1,end=FramesNumber)
     ssp.utils.save_Blender()
-def add_blenderfileobjects(blend_file_path,RCS0=1,decimatefactor=1):
-    object_directory = blend_file_path + "/Object/"
+# def add_blenderfileobjects(blend_file_path,RCS0=1,decimatefactor=1):
+#     with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
+#         data_to.objects = data_from.objects  # Load all objects
+#     for obj in data_to.objects:
+#         if obj is not None:  # Avoid null references
+#             bpy.context.scene.collection.objects.link(obj)
+#             if obj.type == 'MESH':
+#                 obj["RCS0"]=RCS0
+    # if decimatefactor<1:
+    #     ssp.utils.decimate_scene_all(decimation_ratio=decimatefactor)
+def add_blenderfileobjects(blend_file_path, RCS0=1, decimatefactor=1, rotation=(0, 0, 0), translation=(0, 0, 0)):
+    """
+    Load objects from a Blender file, link them to the current scene, and apply transformations while preserving armature relationships.
+    
+    Parameters:
+        blend_file_path (str): Path to the .blend file containing objects.
+        RCS0 (float): Custom property to assign to mesh objects.
+        decimatefactor (float): Factor to simplify geometry for mesh objects (optional).
+        rotation (tuple): Rotation to apply to all objects (in radians, as (x, y, z)).
+        translation (tuple): Translation to apply to all objects (as (x, y, z)).
+    
+    Returns:
+        list: A list of the added objects.
+    """
+    import mathutils
+
+    added_objects = []  # List to store references to added objects
+    
+    # Load objects from the specified blend file
     with bpy.data.libraries.load(blend_file_path) as (data_from, data_to):
         data_to.objects = data_from.objects  # Load all objects
+
+    # Transform matrix for rotation and translation
+    rotation_matrix = mathutils.Euler(rotation).to_matrix().to_4x4()
+    translation_matrix = mathutils.Matrix.Translation(translation)
+    transform_matrix = translation_matrix @ rotation_matrix  # Combine translation and rotation
+    
+    # Process and add each object to the current scene
     for obj in data_to.objects:
         if obj is not None:  # Avoid null references
             bpy.context.scene.collection.objects.link(obj)
+            added_objects.append(obj)  # Keep track of added objects
+
+            # Apply the transformation while respecting armature relationships
+            if obj.parent is None:  # Only transform root objects
+                obj.matrix_world = transform_matrix @ obj.matrix_world
+            
+            # Process mesh objects
             if obj.type == 'MESH':
-                obj["RCS0"]=RCS0
-    # if decimatefactor<1:
-    #     ssp.utils.decimate_scene_all(decimation_ratio=decimatefactor)
+                obj["RCS0"] = RCS0
+                
+                # Apply decimation if needed
+                if decimatefactor < 1:
+                    modifier = obj.modifiers.new(name="Decimate", type='DECIMATE')
+                    modifier.ratio = decimatefactor
+                    bpy.context.view_layer.objects.active = obj
+                    bpy.ops.object.modifier_apply(modifier="Decimate")
+    
+    return added_objects  # Return the list of added objects
+
 def predefine_Hand_Gesture_1642():
     ssp.utils.delete_all_objects()
     # try:

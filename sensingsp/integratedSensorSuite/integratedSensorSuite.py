@@ -310,11 +310,12 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
                         PulseWaveform = ssp.RadarSpecifications[isrx][irrx]['PulseWaveform']
                         Waveform = ssp.radar.radarwaveforms.barker_code(11)
                         if PulseWaveform=='UWB':
-                          
-                          Lwaveform = int(1.5*1/Ts/ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
+                          FMCWRadar = 100
+                          Lwaveform = int(1/Ts/ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
                           # Waveform = ssp.radar.radarwaveforms.gaussian_waveform(Lwaveform,std_dev=.3)
                           Waveform = ssp.radar.radarwaveforms.gaussian_waveform(Lwaveform,std_dev=0.6)
-                          Waveform *= np.sin(np.pi*2*np.arange(Waveform.shape[0])*.3)
+                          f0T=Ts*(ssp.LightSpeed/ssp.RadarSpecifications[isrx][irrx]['Lambda']-.5*ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
+                          Waveform *= np.sin(np.pi*2*np.arange(Waveform.shape[0])*f0T)
                           ssp.RadarSpecifications[isrx][irrx]['PulseWaveform_Loaded']=Waveform
                       if RadarMode=='CW':
                         FMCWRadar = 2
@@ -374,6 +375,23 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
                                 Window_Waveform[ind1]=Waveform[ind2]
                                 phase2 = 2*np.pi*(d_of_t/Lambda)
                                 SuiteRadarRangePulseRXSignals[isrx]['radars'][irrx][iADC,ip,irx] += amp*np.exp(1j*phase2)*Window_Waveform
+                            elif FMCWRadar == 100:
+                              Lwaveform = int(1.5*1/Ts/ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
+                              Waveform = ssp.radar.radarwaveforms.gaussian_waveform(Lwaveform,std_dev=0.6).astype(np.complex128)
+                              f00=(ssp.LightSpeed/ssp.RadarSpecifications[isrx][irrx]['Lambda']-.5*ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
+                              t = Ts*np.arange((Waveform.shape[0]))
+                              # t-= (d_drate_amp[0] + (Frame_PulseTimes[ip] + 0 * Ts) * d_drate_amp[1]) / LightSpeed
+                              Waveform *= np.exp(1j*np.pi*2*f00*t)
+                              
+                              Window_Waveform = np.zeros_like(d_of_t,dtype=complex)
+                              ind1 = int( (d_drate_amp[0] + (Frame_PulseTimes[ip] + 0 * Ts) * d_drate_amp[1]) / LightSpeed / Ts)
+                              if ind1 < Window_Waveform.shape[0]:
+                                ind1 = np.arange(ind1,min([ind1+Waveform.shape[0],Window_Waveform.shape[0]]))
+                                ind2 = np.arange(0,ind1.shape[0])
+                                Window_Waveform[ind1]=Waveform[ind2]
+                                phase2 = 2*np.pi*(d_of_t/Lambda)
+                                SuiteRadarRangePulseRXSignals[isrx]['radars'][irrx][iADC,ip,irx] += amp*Window_Waveform
+                                # SuiteRadarRangePulseRXSignals[isrx]['radars'][irrx][iADC,ip,irx] += amp*np.exp(1j*phase2)*Window_Waveform
       
           
     ## Ampedance and ADC 

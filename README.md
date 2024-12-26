@@ -20,6 +20,8 @@ To install SensingSP™ and its dependencies, run the following command:
 pip install sensingsp
 ```
 
+for more info, visit: https://sensingsp.github.io/
+
 ## Contact
 
 For inquiries, suggestions, or contributions, feel free to reach out:

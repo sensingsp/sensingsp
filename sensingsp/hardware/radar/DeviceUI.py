@@ -8,6 +8,7 @@ import os
 
 import sensingsp as ssp
 
+import numpy as np
 import serial.tools.list_ports
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -50,7 +51,7 @@ class RadarPlotCanvas(FigureCanvas):
 def list_available_ports():
     """List all available serial ports."""
     ports = serial.tools.list_ports.comports()
-    available_ports = [port.device for port in ports if "USB" in port.device or "COM" in port.device]
+    available_ports = [[port.device,port.description] for port in ports if "USB" in port.device or "COM" in port.device]
     return available_ports
 
 class GeneralDevice():
@@ -174,12 +175,13 @@ class RadarApp(QMainWindow):
             config_port_combo = QComboBox()
             data_port_combo = QComboBox()
             available_ports = list_available_ports()
-            for port in available_ports:
+            for port,desc in available_ports:
                 config_port_combo.addItem(port)
                 data_port_combo.addItem(port)
-            N=config_port_combo.currentIndex()+1
-            if len(available_ports)>N:
-                data_port_combo.setCurrentIndex(N)
+                if "enhanced" in desc.lower():
+                    config_port_combo.setCurrentIndex(config_port_combo.count()-1)
+                if "standard" in desc.lower():
+                    data_port_combo.setCurrentIndex(data_port_combo.count()-1)
             self.device_table.setCellWidget(row, k, config_port_combo)
             k += 1
             self.device_table.setCellWidget(row, k, data_port_combo)
@@ -209,7 +211,7 @@ class RadarApp(QMainWindow):
                 file_path, _ = QFileDialog.getOpenFileName(self, "Select Config File", ssp.config.temp_folder, "Config Files (*.cfg)")
                 if file_path:
                     config_file_text.setText(file_path)
-                    device["ConfigFile"] = file_path
+                    device.ConfigFile = file_path
 
             config_file_button.clicked.connect(browse_file)
 
@@ -240,6 +242,11 @@ class RadarApp(QMainWindow):
                         self.device_table.cellWidget(row, 3).setChecked(ti.connected)
                         ti.send_config_file(d.ConfigFile)
                         self.devices_comm.append(["TI",d.ConfigPortName,d.DataPortName,ti])
+                elif d.Name.startswith("Xhetru "):
+                    x4 = ssp.hardware.radar.XeThru.XeThruDevice(port=d.ConfigPortName)
+                    x4.connect()
+                    if x4.connected:
+                        self.devices_comm.append(["Xhetru",d.ConfigPortName,"",x4])
         # self.devices_comm[-1].decoded
 
     def update_plot(self):
@@ -251,14 +258,21 @@ class RadarApp(QMainWindow):
             latest_device = self.devices_comm[-1][3]
 
             if len(latest_device.decoded) > 0:
-                # Extract the range and noise profiles
-                decoded_data = latest_device.decoded[-1][0]
-                range_profile = decoded_data.get('range_profile', [])
-                noise_profile = decoded_data.get('noise_profile', [])
+                if self.devices_comm[-1][0]=="TI":
+                    decoded_data = latest_device.decoded[-1][0]
+                    range_profile = decoded_data.get('range_profile', [])
+                    noise_profile = decoded_data.get('noise_profile', [])
 
-                # Update the plot with the new data
-                self.canvas.update_plot(range_profile, noise_profile)
-
+                    # Update the plot with the new data
+                    self.canvas.update_plot(range_profile, noise_profile)
+                elif self.devices_comm[-1][0]=="Xhetru":
+                    decoded_data = latest_device.decoded[-1][0]
+                    I = decoded_data.real
+                    Q = decoded_data.imag
+                    # phase = np.arctan2(Q, I)/np.pi*180
+                    # self.canvas.update_plot(phase, phase)
+                    self.canvas.update_plot(I, Q)
+                    
         # Restart the timer
         # self.timer = Timer(0.1, self.update_plot)
         # self.timer.start()

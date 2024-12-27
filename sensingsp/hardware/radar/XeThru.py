@@ -1,10 +1,67 @@
-from PyQt5.QtCore import QCoreApplication, QTimer, QObject, pyqtSlot
-from PyQt5.QtSerialPort import QSerialPort, QSerialPortInfo
+import threading
+import serial
+import time
+import struct
+import numpy as np
 
-class Xethru(QObject):
-    def __init__(self):
-        super().__init__()
-        self.sensors = X4RangePulseAntennaData()
+def set_detection_zone_command(start_range, end_range):
+    """
+    Generates a command to set the start and end range for the XeThru radar module.
+
+    :param start_range: Start of the detection range (in meters, float).
+    :param end_range: End of the detection range (in meters, float).
+    :return: Byte array representing the command to set the detection zone.
+    """
+    # Protocol constants
+    START_BYTE = 0x7D
+    COMMAND_TYPE = 0x50  # XTS_SPC_X4Driver
+    SET_SUBCOMMAND = 0x10  # XTS_SPCA_SET
+    PARAM_ID_FRAME_AREA = 0x14  # XTS_SPCXI_FRAMEAREA
+    END_BYTE = 0x7E
+
+    # Convert the start and end ranges to IEEE 754 floating-point format (4 bytes each)
+    start_range_bytes = struct.pack('<f', start_range)  # Little-endian float
+    end_range_bytes = struct.pack('<f', end_range)      # Little-endian float
+
+    # Construct the command body
+    command_body = (
+        bytes([COMMAND_TYPE, SET_SUBCOMMAND, PARAM_ID_FRAME_AREA]) +
+        start_range_bytes +
+        end_range_bytes
+    )
+
+    # Calculate the checksum (XOR of all bytes in the command body)
+    checksum = START_BYTE  # Start with the START_BYTE in checksum calculation
+    for byte in command_body:
+        checksum ^= byte
+    checksum &= 0xFF  # Ensure checksum is a single byte
+
+    # Construct the final command
+    command = (
+        bytes([START_BYTE]) +
+        command_body +
+        bytes([checksum]) +
+        bytes([END_BYTE])
+    )
+    
+    return bytes.fromhex(command.hex())
+
+
+class XeThruDevice:
+    def __init__(self, port: str, baudrate: int = 115200):
+        self.port = port
+        self.baudrate = baudrate
+
+        self.serial = None
+        # Threading
+        self.data_thread = None
+        self.stop_event = threading.Event()
+
+        # Optionally store incoming data or parse it on the fly
+        self.data_buffer = bytearray()
+        self.decoded = []
+        self.connected = False
+        
         self.cmd_ping = bytes.fromhex("7d01eeaaeaae7c7e")
         self.cmd_stop_profile_exec = bytes.fromhex("7d20134e7e")
         self.cmd_set_manual_mode = bytes.fromhex("7d20124f7e")
@@ -18,8 +75,9 @@ class Xethru(QObject):
         self.cmd_set_range_5to14 = bytes.fromhex("7d5010140000000000a04000006041e87e")
         self.cmd_set_range_8to17 = bytes.fromhex("7d5010140000000000004100008841a17e")
         self.cmd_set_range_21to30 = bytes.fromhex("7d5010140000000000a8410000f041717e")
+        self.cmd_set_range_0to1_2 = bytes.fromhex("7d501014000000009a99993f8c7e")
         self.flag_seq_start = bytes.fromhex("7c7c7c7c")
-        self.serial = QSerialPort()
+        
 
         # Command cycle and associated x-axis ranges
         self.range_commands = [
@@ -29,140 +87,159 @@ class Xethru(QObject):
             (self.cmd_set_range_8to17, (8, 17)),
             (self.cmd_set_range_21to30, (21, 30)),
         ]
-        self.current_command_index = 0
-
-        # Create plot figure and axis once
-        self.fig, self.ax = plt.subplots()
-        self.line, = self.ax.plot([], [])
-        self.ax.set_title('Radar Data (Magnitude)')
-        self.ax.set_xlabel('Range (m)')
-        self.ax.set_ylabel('Amplitude')
-        self.fig.show()
-        self.rangeLim = (0,1)
-        self.rangeLim_RecSignal = []
         
-        # Timer to change commands every 5 seconds
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.change_range_command)
-        self.timer.start(5000)  # 5 seconds interval
+    def connect(self):
+        """
+        Opens serial connections to the mmWave device and starts the data reading thread.
+        """
+        self.connected = True
+        try:
+            # Open config port
+            self.serial = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                timeout=1
+            )
 
-    def initX4(self, s):
-        if not s.isOpen():
-            o = s.open(QSerialPort.ReadWrite)
-            if o==False:
-                CanNotOpen
-            self.waitsec(0.1)
-        s.write(self.cmd_ping)
-        self.waitsec(0.1)
-        s.write(self.cmd_set_manual_mode)
-        self.waitsec(0.1)
-        s.write(self.cmd_set_downconversion_1)
-        if self.sensors.setFPS == 50:
-            self.waitsec(0.1)
-            s.write(self.cmd_set_fps_to_50)
+            print(f"Connected to port: {self.port}")
+            
+            self.init()
+            # Start background thread to read data
+            self.stop_event.clear()
+            self.data_thread = threading.Thread(target=self._read_data_loop, daemon=True)
+            self.data_thread.start()
+            
+        except serial.SerialException as e:
+            print(f"Error opening serial ports: {e}")
+            self.disconnect()
+            self.connected = False
+
+    def send_command(self, command: str):
+        if self.serial and self.serial.is_open:
+            1
+            # if not command.endswith('\n'):
+            #     command += '\n'
+            # self.serial.write(command.encode('utf-8'))
+            # self.serial.flush()
+            # print(f"Sent command: {command.strip()}")
+            # # Read response until timeout
+            # timeout = .5
+            # end_time = time.time() + timeout
+            # response = b""
+            # while time.time() < end_time:
+            #     bytes_waiting = self.serial_config.in_waiting
+            #     if bytes_waiting > 0:
+            #         # Read everything waiting in the buffer
+            #         chunk = self.serial_config.read(bytes_waiting)
+            #         response += chunk
+
+            #         if b"mmwDemo:/>" in response:
+            #             break
+            #         # Extend the timeout slightly if new data continues to arrive
+            #         # (optional: helps catch slower responses)
+            #         end_time = time.time() + timeout
+            #     else:
+            #         # If nothing new arrived, take a short break to let more data come in
+            #         time.sleep(0.05)
+
+            # # Convert bytes to string
+            # response_str = response.decode('utf-8', errors='ignore').strip()
+            # print(f"Response command: {response_str}")
+            # print(f"________________")
+            
+        else:
+            print("Configuration port is not open. Cannot send command.")
+
+    def _read_data_loop(self):
+        while not self.stop_event.is_set():
+            if self.serial and self.serial.is_open:
+                # Read available data from the data port
+                try:
+                    if self.serial.in_waiting == 0:
+                        continue
+                    data = self.serial.read_all()
+                    if data:
+                        # Store or parse the incoming data
+                        # self.data_buffer.extend(data)
+                        self.data_buffer=data
+                        
+                        # print(len(self.data_buffer),len(data))
+                        self.process_data()
+
+                        # print(f"Data read: {len(data)}, {len(self.data_buffer)}")
+                except serial.SerialException as e:
+                    print(f"Data reading error: {e}")
+                    break
+                except UnicodeDecodeError as e:
+                    # Handle bytes that can't be decoded
+                    print(f"Decode error: {e}")
+            else:
+                # If port is not open, break the loop
+                break
+            # Adjust sleep time if needed to reduce CPU usage
+            time.sleep(0.001)
+        print("Data reading thread stopped.")
+
+    def disconnect(self):
+        """
+        Stops data thread and closes the serial ports.
+        """
+        print("Disconnecting device...")
+        # Signal the data loop to exit
+        self.stop_event.set()
+
+        # Close data thread gracefully
+        if self.data_thread and self.data_thread.is_alive():
+            self.data_thread.join(timeout=1)
+
+        # Close ports
+        if self.serial and self.serial.is_open:
+            self.serial.close()
+        print("Disconnected device.")
+    def init(self):        
+        self.serial.write(self.cmd_ping)
+        self.serial.flush()
+            
+        self.serial.write(self.cmd_set_manual_mode)
+        self.serial.flush()
+        self.serial.write(self.cmd_set_downconversion_1)
+        self.serial.flush()
+        self.serial.write(self.cmd_set_fps_to_90)
+        self.serial.flush()
+        start_range = 1  # Start range in meters
+        end_range = 3    # End range in meters
+        command = set_detection_zone_command(start_range, end_range)
+        self.serial.write(command)
+        # self.serial.write(self.cmd_set_range_0to1_2)
+        self.serial.flush()
         
-        self.waitsec(0.1)
-        s.write(self.cmd_set_range_0to9)
-        self.rangeLim=(0, 9)
+    def process_data(self):
+        if len(self.decoded)>1:
+            self.decoded = [self.decoded[-1]]
+        if len(self.data_buffer) < 23:
+            return
+        if self.data_buffer[0:4] != self.flag_seq_start:
+            return
+        packet_length = struct.unpack('<I', self.data_buffer[4:8])[0]
+        n_samples = struct.unpack('<I', self.data_buffer[19:23])[0] // 2
+        if len(self.data_buffer) < n_samples * 4 * 2 + 23:
+            return
+
+        iq_data = np.frombuffer(self.data_buffer[23:23 + n_samples * 4 * 2], dtype='<f4')
+        I = iq_data[:n_samples]  # First n_samples are I components
+        Q = iq_data[n_samples:]  # Last n_samples are Q components
+        parsed_data = I + 1j * Q  # Combine I and Q to form complex numbers
+        self.decoded.append([parsed_data])
+        # print("I Q",len(parsed_data))
         
-
-    def allports(self, manualPort=''):
-        ports = QSerialPortInfo.availablePorts()
-        for v in ports:
-            check_manual = False
-            if manualPort != '':
-                if manualPort in v.description():
-                    check_manual = True
-            if "Bossa" in v.description() or "XeThru" in v.description() or check_manual:
-                already_exists = False
-                for radar in self.sensors.radar:
-                    if radar.serial.portName() == v.portName():
-                        already_exists = True
-                        if not radar.serial.isOpen():
-                            self.initX4(radar.serial)
-
-                if not already_exists:
-                    new_x4 = X4RangePulseData(QSerialPort(v))
-                    self.sensors.radar.append(new_x4)
-                    new_x4.serial.setBaudRate(QSerialPort.Baud115200)
-                    new_x4.serial.readyRead.connect(self.serialreadyRead)
-                    self.initX4(new_x4.serial)
-
-    def waitsec(self, sec):
-        QTimer.singleShot(int(sec * 1000), lambda: None)
-
-    def change_range_command(self):
-        # Cycle through the commands and send them to the serial port
-        cmd, self.rangeLim = self.range_commands[self.current_command_index]
-
-        if self.sensors.radar:
-            radar_serial = self.sensors.radar[-1].serial
-            if radar_serial.isOpen():
-                print(f"Sending command: {cmd.hex()}, setting range {self.rangeLim[0]} to {self.rangeLim[1]}")
-                radar_serial.write(cmd)
-
-        # Move to the next command
-        self.current_command_index = (self.current_command_index + 1) % len(self.range_commands)
-
-    @pyqtSlot()
-    def serialreadyRead(self):
-        p = self.sender()
-        b = p.readAll()
-        if len(b) > 50:
-            while len(b):
-                if len(b) < 23:
-                    return
-                if b[0:4] != self.flag_seq_start:
-                    return
-                packet_length = struct.unpack('<I', b[4:8])[0]
-                n_samples = struct.unpack('<I', b[19:23])[0] // 2
-                if len(b) < n_samples * 4 * 2 + 23:
-                    return
-
-                d = X4RangeData()
-                # Use numpy to handle I/Q data
-                iq_data = np.frombuffer(b[23:23 + n_samples * 4 * 2], dtype='<f4')
-                I = iq_data[:n_samples]  # First n_samples are I components
-                Q = iq_data[n_samples:]  # Last n_samples are Q components
-                d.r = I + 1j * Q  # Combine I and Q to form complex numbers
-
-                # Find the radar and append the new data
-                for radar in self.sensors.radar:
-                    if radar.serial.portName() == p.portName():
-                        radar.append(d)
-
-                # Plot the absolute value of the most recent data
-                if np.random.rand() > 0.8:  # Only plot with some probability for demonstration
-                    self.update_plot(10 * np.log10(np.abs(self.sensors.radar[0].r[-1].r)))
-                    self.sensors.radar[0].r = []
-
-                # Move the buffer forward
-                b = b[n_samples * 4 * 2 + 23:]
-
-    def update_plot(self, data):
-        ok=False
-        for lim,sig in self.rangeLim_RecSignal:
-            if lim == self.rangeLim:
-                sig.append(data)
-                ok=True
-        if ok==False:
-            self.rangeLim_RecSignal.append([self.rangeLim,[data]])
-        print(len(self.rangeLim_RecSignal))
-        r = np.linspace(self.rangeLim[0],self.rangeLim[1],len(data))
-        self.line.set_data(r, data)
-
-        self.ax.cla()
-        for lim,sig in self.rangeLim_RecSignal:
-            d=sig[-1]
-            r = np.linspace(lim[0],lim[1],len(d))
-            self.ax.plot(r, d)
-
-        self.ax.set_title('Radar Data (Magnitude)')
-        self.ax.set_xlabel('Range (m)')
-        self.ax.set_ylabel('Amplitude')
-        
-        self.ax.relim()
-        self.ax.set_ylim(-60, -5)
-        self.ax.autoscale_view()
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
+        self.data_buffer = self.data_buffer[n_samples * 4 * 2 + 23:]
+# downloaded_file = ssp.utils.hub.fetch_file("animation", "WalkingMan")
+# downloaded_file = ssp.utils.hub.fetch_random_file()
+# ssp.utils.hub.available_files()
+# ssp.hardware.radar.DeviceUI.runapp()
+# ssp.ai.extras.ConwaysGameofLife.runapp()
+# ssp.ai.radarML.HandGestureMisoCNN.runradarmisoCNNapp()
+# ssp.ai.radarML.HumanHealthMonitoringConvAE_BiLSTM.runradarConvAEBiLSTMapp()
+# ssp.ai.radarML.GANWaveforms.runradarWaveformapp()
+# ssp.environment.deform_scenario_1(angLim=10,Lengths = [.2,.1,.1],elps=[.25,.14,.5],sbd=4,cycles=8,cycleHLen=15)
+# ssp.environment.handGesture_simple(G=1)

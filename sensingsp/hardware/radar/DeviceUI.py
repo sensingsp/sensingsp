@@ -51,7 +51,7 @@ class RadarPlotCanvas(FigureCanvas):
 def list_available_ports():
     """List all available serial ports."""
     ports = serial.tools.list_ports.comports()
-    available_ports = [[port.device,port.description] for port in ports if "USB" in port.device or "COM" in port.device]
+    available_ports = [[port.device,port.description] for port in ports if "USB" in port.device or "COM" in port.device or "ACM" in port.device]
     return available_ports
 
 class GeneralDevice():

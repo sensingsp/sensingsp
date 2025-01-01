@@ -3,6 +3,114 @@ import serial
 import time
 import struct
 import numpy as np
+# import matplotlib.pyplot as plt
+# with open("rf_data_binary_data.bin", 'rb') as f:
+#     binary_data = f.read()
+# Nbinary_data = len(binary_data)
+# START_SEQUENCE = 0x7C7C7C7C
+# RESERVED_LENGTH = 4
+# offset = 0
+# start_sequence = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+# check1 = start_sequence != START_SEQUENCE
+# packet_length = struct.unpack('<I', binary_data[4:8])[0]
+# n_samples = struct.unpack('<I', binary_data[19:23])[0] // 2  # Divide by 2 for I and Q pairs
+
+# n_samples=700
+
+# st = 1 + 22 + 4*2
+# iq_data = np.frombuffer(binary_data[st:st + n_samples * 4 ], dtype='<f4')
+    
+# plt.plot(iq_data)
+# plt.show()
+# xxxxxxxxxxxx
+
+
+def parse_rf_data(binary_data):
+    START_SEQUENCE = 0x7C7C7C7C
+    RESERVED_LENGTH = 4
+    offset = 0
+    start_sequence = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+    if start_sequence != START_SEQUENCE:
+        return []
+    
+    # packet_length = struct.unpack('<I', binary_data[4:8])[0]
+    # n_samples = struct.unpack('<I', binary_data[19:23])[0] // 2  # Divide by 2 for I and Q pairs
+
+    n_samples=700
+
+    st = 1 + 22 + 4*2
+
+    if len(binary_data) < n_samples * 4 + st:
+        return []
+    rf = np.frombuffer(binary_data[st:st + n_samples * 4 ], dtype='<f4')
+    return rf
+    # with open("rf_data_binary_data.bin", 'wb') as f:
+    #     f.write(binary_data)
+    offset += 4
+
+    # Read Packet Length
+    packet_length = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+    offset += 4
+
+    # Skip Reserved field
+    offset += RESERVED_LENGTH
+
+    # Read Data Type Identifiers
+    data_type = binary_data[offset]
+    offset += 1
+
+    sub_type = binary_data[offset]
+    offset += 1
+
+    # Ensure the data type matches RF Mode
+    if data_type != 0xA0 or sub_type != 0x12:
+        return []
+
+    # Read ContentId
+    content_id = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+    offset += 4
+
+    # Read Info (e.g., frame counter)
+    info = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+    offset += 4
+
+    # Read Length (Number of float values)
+    length = int.from_bytes(binary_data[offset:offset+4], byteorder='little')
+    offset += 4
+
+    # Read DataItems (Array of float values)
+    data_items = np.frombuffer(binary_data[offset:offset+(length*4)], dtype=np.float32)
+
+    return {
+        'ContentId': content_id,
+        'Info': info,
+        'Length': length,
+        'DataItems': data_items
+    }
+
+
+def parse_baseband_iq(data):
+    # Check the start sequence
+    if data[0:4] != bytes.fromhex("7c7c7c7c"):
+        return []
+    
+    # Extract packet length (4 bytes after the start sequence)
+    packet_length = struct.unpack('<I', data[4:8])[0]
+    
+    # Number of samples (extracted from metadata at offset 19:23)
+    n_samples = struct.unpack('<I', data[19:23])[0] // 2  # Divide by 2 for I and Q pairs
+    
+    # Check if the data length matches the expected size
+    if len(data) < n_samples * 4 * 2 + 23:  # 4 bytes per float, 2 for I/Q, +23 for header
+        return []
+    
+    # Parse IQ data from the appropriate offset
+    iq_data = np.frombuffer(data[23:23 + n_samples * 4 * 2], dtype='<f4')
+    I = iq_data[:n_samples]  # First n_samples are I components
+    Q = iq_data[n_samples:]  # Last n_samples are Q components
+    IQ = I + 1j * Q  # Combine I and Q to form complex numbers
+    
+    return IQ
 
 def set_detection_zone_command(start_range, end_range):
     """
@@ -51,7 +159,7 @@ class XeThruDevice:
     def __init__(self, port: str, baudrate: int = 115200):
         self.port = port
         self.baudrate = baudrate
-
+        self.MaxBufferSize = 1200
         self.serial = None
         # Threading
         self.data_thread = None
@@ -67,16 +175,29 @@ class XeThruDevice:
         self.cmd_set_manual_mode = bytes.fromhex("7d20124f7e")
         self.cmd_set_downconversion_0 = bytes.fromhex("7d501013000000002e7e")
         self.cmd_set_downconversion_1 = bytes.fromhex("7d501013000000012f7e")
+        self.cmd_set_fps_to_0 = bytes.fromhex("7d50101000000000000000002d7e")
         self.cmd_set_fps_to_10 = bytes.fromhex("7d501010000000000020414c7e")
         self.cmd_set_fps_to_50 = bytes.fromhex("7d50101000000000004842277e")
         self.cmd_set_fps_to_90 = bytes.fromhex("7d5010100000000000b442db7e")
+        # self.cmd_set_fps_to_120 = bytes.fromhex("7d5010100000000042f000007e")
+        # self.cmd_set_fps_to_150 = bytes.fromhex("7d50101000000000431600007e")
+        # self.cmd_set_fps_to_180 = bytes.fromhex("7d50101000000000433400007e")
+        # self.cmd_set_fps_to_200 = bytes.fromhex("7d50101000000000434800007e")
+        # self.cmd_set_fps_to_300 = bytes.fromhex("7d50101000000000439600007e")
+        # self.cmd_set_fps_to_500 = bytes.fromhex("7d5010100000000043fa00007e")
         self.cmd_set_range_0to9 = bytes.fromhex("7d5010140000000000000000001041787e")
         self.cmd_set_range_2to11 = bytes.fromhex("7d5010140000000000004000003041187e")
         self.cmd_set_range_5to14 = bytes.fromhex("7d5010140000000000a04000006041e87e")
         self.cmd_set_range_8to17 = bytes.fromhex("7d5010140000000000004100008841a17e")
         self.cmd_set_range_21to30 = bytes.fromhex("7d5010140000000000a8410000f041717e")
         self.cmd_set_range_0to1_2 = bytes.fromhex("7d501014000000009a99993f8c7e")
+          # New command
+
         self.flag_seq_start = bytes.fromhex("7c7c7c7c")
+        self.sensor_start = bytes.fromhex("7d20015c7e")  # Start radar
+        self.sensor_stop = bytes.fromhex("7d20134e7e")  # Stop radar
+
+
         
 
         # Command cycle and associated x-axis ranges
@@ -114,42 +235,6 @@ class XeThruDevice:
             self.disconnect()
             self.connected = False
 
-    def send_command(self, command: str):
-        if self.serial and self.serial.is_open:
-            1
-            # if not command.endswith('\n'):
-            #     command += '\n'
-            # self.serial.write(command.encode('utf-8'))
-            # self.serial.flush()
-            # print(f"Sent command: {command.strip()}")
-            # # Read response until timeout
-            # timeout = .5
-            # end_time = time.time() + timeout
-            # response = b""
-            # while time.time() < end_time:
-            #     bytes_waiting = self.serial_config.in_waiting
-            #     if bytes_waiting > 0:
-            #         # Read everything waiting in the buffer
-            #         chunk = self.serial_config.read(bytes_waiting)
-            #         response += chunk
-
-            #         if b"mmwDemo:/>" in response:
-            #             break
-            #         # Extend the timeout slightly if new data continues to arrive
-            #         # (optional: helps catch slower responses)
-            #         end_time = time.time() + timeout
-            #     else:
-            #         # If nothing new arrived, take a short break to let more data come in
-            #         time.sleep(0.05)
-
-            # # Convert bytes to string
-            # response_str = response.decode('utf-8', errors='ignore').strip()
-            # print(f"Response command: {response_str}")
-            # print(f"________________")
-            
-        else:
-            print("Configuration port is not open. Cannot send command.")
-
     def _read_data_loop(self):
         while not self.stop_event.is_set():
             if self.serial and self.serial.is_open:
@@ -159,14 +244,8 @@ class XeThruDevice:
                         continue
                     data = self.serial.read_all()
                     if data:
-                        # Store or parse the incoming data
-                        # self.data_buffer.extend(data)
-                        self.data_buffer=data
-                        
-                        # print(len(self.data_buffer),len(data))
-                        self.process_data()
-
-                        # print(f"Data read: {len(data)}, {len(self.data_buffer)}")
+                        self.data_buffer.extend(data)
+                        self.process_data(data)
                 except serial.SerialException as e:
                     print(f"Data reading error: {e}")
                     break
@@ -202,9 +281,8 @@ class XeThruDevice:
             
         self.serial.write(self.cmd_set_manual_mode)
         self.serial.flush()
-        self.serial.write(self.cmd_set_downconversion_1)
-        self.serial.flush()
-        self.serial.write(self.cmd_set_fps_to_90)
+        self.set_RF_mode(0)
+        self.serial.write(self.cmd_set_fps_to_10)
         self.serial.flush()
         start_range = 1  # Start range in meters
         end_range = 3    # End range in meters
@@ -212,10 +290,33 @@ class XeThruDevice:
         self.serial.write(command)
         # self.serial.write(self.cmd_set_range_0to1_2)
         self.serial.flush()
-        
-    def process_data(self):
-        if len(self.decoded)>1:
-            self.decoded = [self.decoded[-1]]
+    
+    def set_RF_mode(self,mode):
+        self.RF_mode = mode
+        if self.RF_mode == 0:
+            self.serial.write(self.cmd_set_downconversion_1) # 1463 Bytes 1439
+        else:
+            self.serial.write(self.cmd_set_downconversion_0) # 4096 Bytes
+        self.serial.flush()
+    def process_data(self, data):
+
+        # print(len(self.data_buffer),len(data))
+        if len(self.data_buffer) > 10000:
+            self.data_buffer = bytearray()
+        if len(data) > 100:
+            if self.RF_mode == 0:
+                IQ=parse_baseband_iq(data)
+                if len(IQ) > 0:
+                    self.decoded.append([IQ,time.perf_counter()])
+                    while len(self.decoded)>self.MaxBufferSize:
+                        self.decoded.pop(0)
+            else:    
+                rf = parse_rf_data(data)
+                if len(rf) > 0:
+                    self.decoded.append([rf,time.perf_counter()])
+                    while len(self.decoded)>self.MaxBufferSize:
+                        self.decoded.pop(0)
+        return
         if len(self.data_buffer) < 23:
             return
         if self.data_buffer[0:4] != self.flag_seq_start:
@@ -229,17 +330,11 @@ class XeThruDevice:
         I = iq_data[:n_samples]  # First n_samples are I components
         Q = iq_data[n_samples:]  # Last n_samples are Q components
         parsed_data = I + 1j * Q  # Combine I and Q to form complex numbers
-        self.decoded.append([parsed_data])
+        self.decoded.append([parsed_data,time.perf_counter()])
+        if len(self.decoded)>self.MaxBufferSize:
+            self.decoded.pop(0)
         # print("I Q",len(parsed_data))
-        
+        # test = parse_baseband_iq(self.data_buffer)
+        # d = test ["SigI"]-I
+        # d2 = test ["SigQ"]-Q
         self.data_buffer = self.data_buffer[n_samples * 4 * 2 + 23:]
-# downloaded_file = ssp.utils.hub.fetch_file("animation", "WalkingMan")
-# downloaded_file = ssp.utils.hub.fetch_random_file()
-# ssp.utils.hub.available_files()
-# ssp.hardware.radar.DeviceUI.runapp()
-# ssp.ai.extras.ConwaysGameofLife.runapp()
-# ssp.ai.radarML.HandGestureMisoCNN.runradarmisoCNNapp()
-# ssp.ai.radarML.HumanHealthMonitoringConvAE_BiLSTM.runradarConvAEBiLSTMapp()
-# ssp.ai.radarML.GANWaveforms.runradarWaveformapp()
-# ssp.environment.deform_scenario_1(angLim=10,Lengths = [.2,.1,.1],elps=[.25,.14,.5],sbd=4,cycles=8,cycleHLen=15)
-# ssp.environment.handGesture_simple(G=1)

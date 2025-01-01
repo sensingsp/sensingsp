@@ -202,6 +202,7 @@ class GameofLifeApp(QMainWindow):
         layout.addWidget(self.cuda_checkbox)
 
         directory_path = os.path.join(ssp.config.temp_folder,"Conways")
+        os.makedirs(directory_path, exist_ok=True)
         N= len(os.listdir(directory_path))
         if N<100:
             ssp.utils.hub.download_zipfile_extract_remove("https://conwaylife.com/patterns/","all.zip",directory_path)

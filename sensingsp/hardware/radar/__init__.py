@@ -1,1 +1,1 @@
-from . import XeThru,TImmWave,DeviceUI
+from . import XeThru,TImmWave,DeviceUI,XethruUI

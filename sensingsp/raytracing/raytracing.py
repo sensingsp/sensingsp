@@ -488,6 +488,166 @@ def Path_RayTracing(progressbar=[]):
         anything2do = True
         # break
     ssp.Paths = all_info
+def run():
+    empty = bpy.data.objects.get("Detection Cloud")
+    if empty:
+        # Select all children of the empty object
+        for child in empty.children:
+            child.select_set(True)
+        # Select the empty itself
+        empty.select_set(True)
+        # Delete selected objects
+        bpy.ops.object.delete()
+    
+    bpy.context.scene.frame_set(ssp.config.CurrentFrame)
+    bpy.context.view_layer.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    geocalculator = BlenderGeometry()
+    rayTracingFunctions = RayTracingFunctions()
+    suite_information = BlenderSuiteFinder().find_suite_information()
+    
+    if "Simulation Settings" in bpy.data.objects:
+        sim_axes = bpy.data.objects["Simulation Settings"]
+        if "Velocity Calc. Jump" not in sim_axes:
+          sim_axes["Velocity Calc. Jump"]=1
+        blender_frame_Jump_for_Velocity = sim_axes["Velocity Calc. Jump"]
+        BounceNumber = bpy.data.objects["Simulation Settings"]["Bounce Number"]
+        # RenderBlenderFrames = bpy.data.objects["Simulation Settings"]["Render Blender Frames"]
+        # render_imade_dir = bpy.data.objects["Simulation Settings"]["Video Directory"]
+        do_RayTracing_LOS = bpy.data.objects["Simulation Settings"]["do RayTracing LOS"]
+        do_RayTracing_Simple = bpy.data.objects["Simulation Settings"]["do RayTracing Simple"]
+    else:
+        blender_frame_Jump_for_Velocity = 1
+        BounceNumber = 2
+        do_RayTracing_LOS = True 
+        do_RayTracing_Simple = False
+        # RenderBlenderFrames = False
+        # render_imade_dir = current_working_directory
+    Suite_Position,ScattersGeo,HashFaceIndex_ScattersGeo,ScattersGeoV = geocalculator.get_Position_Velocity(bpy.context.scene, suite_information, ssp.config.CurrentFrame, blender_frame_Jump_for_Velocity)
+    # float(bpy.context.scene.render.fps)
+    ssp.lastScatterInfo = ScattersGeo
+    ssp.lastSuite_Position=Suite_Position
+    ## RIS init
+    # for isuite,suiteobject in enumerate(suite_information):
+    #   if 1: # Zero Phase
+    #     for iris , ris in enumerate(Suite_Position[isuite]['RIS']):
+    #         for iriselement ,ris_element_position in enumerate(ris['Position']):
+    #             ris['PhaseAmplitude'][iriselement][0] = 1
+    #             ris['PhaseAmplitude'][iriselement][1] = 0
+    #   else: # Random Phase
+    #     for iris , ris in enumerate(Suite_Position[isuite]['RIS']):
+    #         for iriselement ,ris_element_position in enumerate(ris['Position']):
+    #             ris['PhaseAmplitude'][iriselement][0] = 1
+    #             ris['PhaseAmplitude'][iriselement][1] = 2*np.pi*np.random.rand()
+    # Probes Reset
+    for isuite,suiteobject in enumerate(suite_information):
+      for iprobe , probe in enumerate(Suite_Position[isuite]['Probe']):
+        for iprobe2 , probe2 in enumerate(probe):
+          for iprobev , probev in enumerate(probe2):
+            probev[2]=np.longdouble(0)+1j*np.longdouble(0)
+    all_d_drate_amp = {}
+    for isuite in range(len(suite_information)):
+        all_d_drate_amp[isuite] = {}
+        for iradar in range(len(suiteobject['Radar'])):
+            all_d_drate_amp[isuite][iradar] = {}
+            for irx in range(len(Suite_Position[isuite]['Radar'][iradar]['RX-Position'])):
+                all_d_drate_amp[isuite][iradar][irx] = {}
+                for isuite2 in range(len(suite_information)):
+                    all_d_drate_amp[isuite][iradar][irx][isuite2] = {}
+                    for iradar2 in range(len(suiteobject['Radar'])):
+                        all_d_drate_amp[isuite][iradar][irx][isuite2][iradar2] = {}
+                        for itx in range(len(Suite_Position[isuite2]['Radar'][iradar2]['TX-Position'])):
+                            all_d_drate_amp[isuite][iradar][irx][isuite2][iradar2][itx] = []
+    for isuite,suiteobject in enumerate(suite_information):
+      ## Radar Analysis
+      for iradar,radarobject in enumerate(suiteobject['Radar']):
+        # Timing should be done
+        # print(isuite,iradar)
+        Paths = []
+        if do_RayTracing_LOS:
+          if do_RayTracing_Simple:
+            rad = Suite_Position[isuite]['Radar'][iradar]['TX-Position']
+            cent = Vector((0,0,0))
+            for pos in rad:
+              cent+=pos
+            cent/=len(rad)
+            LOS_target = []
+            for target in ScattersGeo:
+              if rayTracingFunctions.check_line_of_sight(cent, target[0], depsgraph):
+                LOS_target.append(target)
+            for itx in range(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position'])):
+              for target in LOS_target: #face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0])
+                for irx in range(len(Suite_Position[isuite]['Radar'][iradar]['RX-Position'])):
+                    path = Path4WavePropagation(None,None,[])
+                    path.transmitter = [isuite,iradar,itx]
+                    mid=SourceType("scatter", [[-1,target[1],target[2]],target[0]])
+                    path.middle_elements.append(mid)
+                    path.receiver = [isuite,iradar,irx]
+                    Paths.append(path)
+          else:
+            raysets = []
+            for itx in range(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position'])):
+              rayset = rayTracingFunctions.rayset_gen_TX(itx,Suite_Position,isuite,iradar,ScattersGeo,depsgraph)
+              raysets.append(rayset)
+            for bounce in range(BounceNumber):
+              raysetsNext = []
+              for rayset in raysets:
+                rxPath = rayTracingFunctions.RXPath(rayset)
+                for path in rxPath:
+                  Paths.append(path)
+                for _ in rayset.metaInformation['RIS']:
+                  rayset_new = rayTracingFunctions.rayset_gen_RIS(_[2],Suite_Position,_[0],_[1],ScattersGeo,depsgraph)
+                  rayset_new.source_ray = rayset
+                  raysetsNext.append(rayset_new)
+                # Test = len(rayset.metaInformation['Target'])
+                # print("Test ",Test)
+                for targetLOS_hitpoint_startreflectedpoints_randomvectors in rayset.metaInformation['Target']:
+                  rayset_new = rayTracingFunctions.rayset_gen_Scatter(targetLOS_hitpoint_startreflectedpoints_randomvectors,Suite_Position,isuite,iradar,depsgraph)
+                  if len(rayset_new.metaInformation['RX'])+len(rayset_new.metaInformation['Target'])+len(rayset_new.metaInformation['RIS'])>0:
+                    rayset_new.source_ray = rayset
+                    raysetsNext.append(rayset_new)
+              raysets = raysetsNext
+        else:
+          # import sys
+          size=0
+          for itx in range(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position'])):
+            for itarget,target in enumerate(ScattersGeo): #face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0])
+              for irx in range(len(Suite_Position[isuite]['Radar'][iradar]['RX-Position'])):
+                  path = Path4WavePropagation(None,None,[])
+                  path.transmitter = [isuite,iradar,itx]
+                  mid=SourceType("scatter", [[-1,target[1],target[2]],target[0]])
+                  path.middle_elements.append(mid)
+                  path.receiver = [isuite,iradar,irx]
+                  Paths.append(path)
+          #         size += sys.getsizeof(path)
+          # size2 = sys.getsizeof(Paths)
+
+        if 1:
+          paths_processing(Paths,Suite_Position,ScattersGeoV,HashFaceIndex_ScattersGeo,ScattersGeo,all_d_drate_amp)
+        else:
+          for path in Paths:
+            amp = np.longdouble(1)
+            d = np.longdouble(0)
+            drate = 0
+            # DESIRED FOR EACH PATH: AMP D DRATE
+
+            # if len(path.middle_elements)==0: # Strong Interference + Friis Equation
+            #   continue
+            d_drate_amp_Scatters_in_the_Middle,is_end=calc_Path_TX(path,Suite_Position,ScattersGeoV,HashFaceIndex_ScattersGeo,ScattersGeo,d,drate,amp)
+            if is_end:
+              RXfromTX = ssp.config.directReceivefromTX
+              if RXfromTX:
+                all_d_drate_amp[path.receiver[0]][path.receiver[1]][path.receiver[2]][path.transmitter[0]][path.transmitter[1]][path.transmitter[2]].append(d_drate_amp_Scatters_in_the_Middle)
+              continue
+            d,drate,amp,Scatters_in_the_Middle = d_drate_amp_Scatters_in_the_Middle
+            
+            # Middle Elements
+            d,drate,amp,Scatters_in_the_Middle=calc_Path_Middle(path,Suite_Position,ScattersGeoV,HashFaceIndex_ScattersGeo,ScattersGeo,d,drate,amp,Scatters_in_the_Middle)
+            
+            d,drate,amp=calc_Path_RX(path,Suite_Position,ScattersGeoV,HashFaceIndex_ScattersGeo,ScattersGeo,d,drate,amp)
+            
+            all_d_drate_amp[path.receiver[0]][path.receiver[1]][path.receiver[2]][path.transmitter[0]][path.transmitter[1]][path.transmitter[2]].append([d,drate,amp,Scatters_in_the_Middle])
+    return all_d_drate_amp
 def Path_RayTracing_frame(progressbar=[]):
     empty = bpy.data.objects.get("Detection Cloud")
     if empty:

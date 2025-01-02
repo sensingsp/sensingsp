@@ -13,6 +13,7 @@ import json
 import sensingsp as ssp
 
 from enum import Enum
+
 class RadarSensorsCategory(Enum):
     TI_AWR1642 = 1
     TI_IWR6843 = 2
@@ -21,6 +22,15 @@ class RadarSensorsCategory(Enum):
     TI_Cascade_AWR2243 = 5
     # SISO_mmWave76GHz = 6
     Xhetru_X4 = 7
+
+class RadarSignalGenerationConfigurations(Enum):
+    Spillover_Enabled = 1
+    Spillover_Disabled = 2
+    RayTracing_Light = 3
+    RayTracing_Balanced = 4
+    RayTracing_Advanced = 5
+
+
 
 class RadarSpecJSON:
     def __init__(self, model=None, frequency_range=None, bandwidth=None, transmit_channels=None, receive_channels=None,
@@ -905,7 +915,7 @@ def predefined_array_configs_TI_AWR1642(isuite, iradar, location, rotation, f0=7
     Type = 'SPOT'
     tx_positions = [
         (0, 0),
-        (4, 0)
+        (-4, 0)
     ]
     # empty["TX_az"]=[0, -4, -8]
     # empty["TX_el"]=[0,  0, 0]
@@ -925,9 +935,9 @@ def predefined_array_configs_TI_AWR1642(isuite, iradar, location, rotation, f0=7
 
     rx_positions = [
         (0, 0),
-        (1, 0),
-        (2, 0),
-        (3, 0)
+        (-1, 0),
+        (-2, 0),
+        (-3, 0)
     ]
 
     # antenna_signal_example = np.zeros((len(tx_positions),len(rx_positions)),dtype=np.complex128)
@@ -1777,7 +1787,7 @@ def steeringvector(va,az):
     return s
      
 
-def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0):
+def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0, radial_velocity=0):
     """
     Adds a target cube in a Blender scene with specified parameters.
     The cube's location and orientation are adjusted based on azimuth, elevation, and reference radar.
@@ -1804,7 +1814,17 @@ def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0)
     )
     cube = bpy.context.object
     cube["RCS0"] = RCS0  # Store RCS value as a custom property
+    
+    if np.abs(radial_velocity)> 0:
+        T = 1.0/bpy.context.scene.render.fps
+        start_frame = 1
+        end_frame = 2
+        cube.keyframe_insert(data_path="location", frame=start_frame)
+        dx = radial_velocity * T
+        cube.location.x = range + dx + 0.5 * size
+        cube.keyframe_insert(data_path="location", frame=end_frame)
 
+    
     # Create an empty object to act as the parent of the cube
     bpy.ops.object.empty_add(
         type='PLAIN_AXES',

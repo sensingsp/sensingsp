@@ -32,6 +32,25 @@ def setRadar_oneCPI_in_oneFrame(radar):
 def setRadar_multipleCPI_in_oneFrame(radar):
   radar['continuousCPIsTrue_oneCPIpeerFrameFalse']=True
 
+
+def set_configurations(configurations):
+  for config in configurations:
+    if config == ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Balanced:
+      set_RayTracing_balanced()
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Light:
+      set_RayTracing_light()
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Advanced:
+      set_RayTracing_advanced_intense()
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.Spillover_Disabled:
+      ssp.config.directReceivefromTX =  False 
+      ssp.config.RadarRX_only_fromscatters_itsTX = True
+      ssp.config.RadarRX_only_fromitsTX = True
+      ssp.config.Radar_TX_RX_isolation = True
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.Spillover_Enabled:
+      ssp.config.directReceivefromTX =  True
+      
+    
+
 def set_RayTracing_balanced():  
   bpy.data.objects["Simulation Settings"]["do RayTracing LOS"] = True
   bpy.data.objects["Simulation Settings"]["do RayTracing Simple"] = True

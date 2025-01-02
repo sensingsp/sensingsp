@@ -5,3 +5,4 @@ from . import texturemapping
 from . import processingfunctions
 from . import predefines
 from . import hub
+from . import research

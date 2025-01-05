@@ -20,8 +20,10 @@ class RadarSensorsCategory(Enum):
     # TI_AWR2243 = 3
     # TI_AWR2944 = 4
     TI_Cascade_AWR2243 = 5
-    # SISO_mmWave76GHz = 6
+    SISO_mmWave76GHz = 6
     Xhetru_X4 = 7
+    ULA_AllRX = 8
+    ULA_SameTXRX = 9
 
 class RadarSignalGenerationConfigurations(Enum):
     Spillover_Enabled = 1
@@ -1558,13 +1560,15 @@ def dopplerprocessing_mimodemodulation(x,specifications):
     NFFT_Doppler_OverNextPow2 = specifications['DopplerFFT_OverNextP2']
     MTI_Apply = specifications['MTI_Enabled']
     if specifications['DopplerProcessingMIMODemod']!='Simple':
-        # slow_time_window = scipy.signal.windows.hamming(x.shape[1])
-        # X_windowed_slow = x * slow_time_window[np.newaxis,:,np.newaxis,np.newaxis]
         N_Doppler = Leff
         N_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
         f_Doppler = np.arange(0,N_Doppler)/N_Doppler/specifications['PRI']/M_TX - 1/specifications['PRI']/M_TX / 2
+        PRF_TDM = 1.0/specifications['PRI'] / M_TX
+        f_Doppler = np.arange(0, N_Doppler) / N_Doppler * PRF_TDM - PRF_TDM/2
+
         PrecodingMatrixInv = np.linalg.pinv(specifications['PrecodingMatrix'])
         rangeDopplerTXRX = np.zeros((x.shape[0], f_Doppler.shape[0], M_TX, x.shape[2]),dtype=complex)
+        # slow_time_window = scipy.signal.windows.boxcar(x.shape[1])
         slow_time_window = scipy.signal.windows.hamming(x.shape[1])
         x_windowed = x * slow_time_window[ np.newaxis , : , np.newaxis]
         
@@ -1573,6 +1577,16 @@ def dopplerprocessing_mimodemodulation(x,specifications):
             X_doppler_comp = x_windowed * np.conj(dopplerSteeringVector[np.newaxis,:,np.newaxis])
             rangeTXRX = np.einsum('ijk,lj->ilk', X_doppler_comp, PrecodingMatrixInv)
             rangeDopplerTXRX[:, idop, :, :] = rangeTXRX
+            # if MIMO_phase_compensation_Enable:
+            #     TDM_MIMO_phase_compensation = np.ones((S_IF_krange_ldoppler_pva.shape[1], S_IF_krange_ldoppler_pva.shape[2]),dtype=S_IF_krange_ldoppler_pva.dtype)
+            #     T = 1/PRF_TDM / MTX
+            #     for ifd in range(len(fd)):
+            #         for m in range(MTX):
+            #             n = np.arange(NRX)
+            #             fdi = -fd[ifd]
+            #             TDM_MIMO_phase_compensation[ ifd , m * NRX + n] = np.exp(1j * 2 * np.pi * fdi * m * T)
+            #     S_IF_krange_ldoppler_pva *= TDM_MIMO_phase_compensation[np.newaxis, : , : ]
+
     else:
         rangePulseTXRX = np.zeros((x.shape[0], Leff, M_TX, x.shape[2]),dtype=complex)
         for ipulse in range(Leff):
@@ -1856,7 +1870,16 @@ def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0,
         empty.rotation_euler = (0, -el_new, az_new)
 
     return cube, empty
-
+def printAntennaInfp(radar):
+    print(radar['Transmit_Power_dBm'])#=30
+    print(radar["Transmit_Antenna_Element_Pattern"])# = "NotOmni"
+    print(radar["Transmit_Antenna_Element_Gain_db"])# = 32
+    print(radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"])# = 2.5
+    print(radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"])# = 2.6
+    print(radar["Receive_Antenna_Element_Gain_db"])# = 32
+    print(radar["Receive_Antenna_Element_Pattern"])# = "NotOmni"
+    print(radar["Receive_Antenna_Element_Azimuth_BeamWidth_deg"])# = 2.5
+    print(radar["Receive_Antenna_Element_Elevation_BeamWidth_deg"])# = 2.6
 def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
     suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
     suiteIndex=len(suite_planes)-1
@@ -1907,6 +1930,14 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         radar['Transmit_Antenna_Element_Pattern']='Directional-Sinc' # add rect pattern
         radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 60
         radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 60
+        return radar
+    if radarSensor==RadarSensorsCategory.ULA_AllRX:
+        N = ssp.config.AddRadar_ULA_N
+        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[0],LinearArray_RXPos=[-i*3e8/76e9/2 for i in range(N*N)])
+        return radar
+    if radarSensor==RadarSensorsCategory.ULA_SameTXRX:
+        N = ssp.config.AddRadar_ULA_N
+        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[-N*(i-0)*3e8/76e9/2 for i in range(N)],LinearArray_RXPos=[-i*3e8/76e9/2 for i in range(N)])
         return radar
     return None
 

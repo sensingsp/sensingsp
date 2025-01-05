@@ -1,5 +1,22 @@
 import sensingsp as ssp
 import numpy as np
+def RayTracing():
+    distance = np.array([])
+    while ssp.config.run():
+        path_d_drate_amp = ssp.raytracing.run()
+        alld = []
+        NRX = len(path_d_drate_amp[0][0])
+        NTX = len(path_d_drate_amp[0][0][0][0][0])
+        distance = np.zeros((NTX,NRX))
+        d0 = path_d_drate_amp[0][0][0][0][0][0][0][0]
+        for irx in range(NRX):
+            for itx in range(NTX):
+                for d_drate_amp in path_d_drate_amp[0][0][irx][0][0][itx]:
+                    d = d_drate_amp[0]
+                    distance[itx,irx]=d-d0
+                    break
+        break
+    return distance 
 def RadarRawData():
     radarRawData = np.array([])
     radarParameters = []

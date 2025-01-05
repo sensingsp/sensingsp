@@ -123,13 +123,14 @@ def imshow(X=None, xlabel='', ylabel='', title=''):
     if X is None:
         return
     plt.figure(figsize=(10, 6))
-    plt.imshow(X, extent=None, aspect='auto')
+    plt.imshow(X.T, extent=None, aspect='auto')
     if xlabel:
         plt.xlabel(xlabel)
     if ylabel:
         plt.ylabel(ylabel)
     if title:
         plt.title(title)
+    plt.colorbar()
     plt.show()
                 
 
@@ -508,7 +509,69 @@ def vectorize_triangleList(triangleList):
   y=np.array(y)
   z=np.array(z)
   return x,y,z
+def showTileImages(images):
+    if len(images) == 1:
+        # Special handling for a single image
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+        ax.imshow(images[0][0])
+        ax.set_title(f'{images[0][1]}, {images[0][2]}')
+        ax.axis('off')
+    else:
+        # General case for multiple images
+        N = int(np.ceil(np.sqrt(len(images))))
+        M = int(np.ceil(len(images) / N))
+        fig, axs = plt.subplots(M, N, figsize=(20, 10))
+        for i, ax in enumerate(axs.flat):
+            if i < len(images):
+                ax.imshow(images[i][0])
+                ax.set_title(f'{images[i][1]}, {images[i][2]}')
+                ax.axis('off')
+            else:
+                ax.axis('off')
+    plt.show()
 
+def renderBlenderTriangles(Triangles):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    # k=0
+    # for obj in Triangles:
+    #     for triangle in obj:
+    #         k+=1
+    #         # if k>100:
+    #         #     break
+    #         ax.plot([triangle[i][0] for i in [0,1,2,0]], [triangle[i][1] for i in [0,1,2,0]],
+    #                 [triangle[i][2] for i in [0,1,2,0]],'k-')
+
+    x,y,z=[],[],[]   
+    for obj in Triangles:
+        for triangle in obj:
+            x.append(triangle[0][0])
+            x.append(triangle[1][0])
+            x.append(triangle[2][0])
+            x.append(triangle[0][0])
+            y.append(triangle[0][1])
+            y.append(triangle[1][1])
+            y.append(triangle[2][1])
+            y.append(triangle[0][1])
+            z.append(triangle[0][2])
+            z.append(triangle[1][2])
+            z.append(triangle[2][2])
+            z.append(triangle[0][2])
+            # if k>100:
+            #     break
+        
+    ax.plot(x,y,z,'-')
+
+    # Set axis limits
+    ax.set_aspect('equal', 'box')
+    # plt.show()
+    # Save the rendered image
+    output_path = os.path.join(ssp.config.temp_folder,'triangles_rendered.png')
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+    img = plt.imread(output_path)
+    return img
+    
 def exportBlenderTriangles():
   frame = ssp.config.CurrentFrame
   out = []

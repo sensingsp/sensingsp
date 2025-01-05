@@ -349,6 +349,8 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
                             ipPM = ip2 % PrecodingMatrix.shape[0]
                             MIMO_Precoding = PrecodingMatrix[ipPM][itx]
                             amp=MIMO_Precoding*d_drate_amp[2]
+                            if amp == 0:
+                              continue
                             # d_of_t =  d_drate_amp[0] + (ip * PRI + iADC * Ts) * d_drate_amp[1]*SimDopplerEffect
                             d_of_t =  d_drate_amp[0] + (Frame_PulseTimes[ip] + iADC * Ts) * d_drate_amp[1]#*SimDopplerEffect
                             

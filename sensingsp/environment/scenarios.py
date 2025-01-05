@@ -99,7 +99,100 @@ def add_scenario(st):
         
         ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
         radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+    if st == '2 Slot Example' or st == '2 Slot as RIS':
+        TX_theta0 = -20.
+        RX_theta0 = 15.
+        RX_theta1 = 85.
+        RX_thetaN = 1000
         
+        if "Extra Settings" in bpy.data.objects:
+            if "2 Slots, TX" in bpy.data.objects["Extra Settings"]:
+                TX_theta0 = float(bpy.data.objects["Extra Settings"]["2 Slots, TX"])
+            if "2 Slots, RX" in bpy.data.objects["Extra Settings"]:
+                if len(bpy.data.objects["Extra Settings"]["2 Slots, RX"].split(","))==3:
+                    RX_theta0,RX_theta1,RX_thetaN = [float(x) for x in bpy.data.objects["Extra Settings"]["2 Slots, RX"].split(",")]
+                    RX_thetaN = int(RX_thetaN)
+        ssp.utils.delete_all_objects()
+        if "Extra Settings" not in bpy.data.objects:
+            bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+            sim_axes = bpy.context.object
+            sim_axes.name = f'Extra Settings'
+            sim_axes["2 Slots, TX"] = f'{TX_theta0}'
+            sim_axes["2 Slots, RX"] = f'{RX_theta0},{RX_theta1},{RX_thetaN}' 
+        
+        ssp.utils.define_settings()
+
+        if st == '2 Slot Example':
+            cube = ssp.environment.add_cube(location=Vector((0, -40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((38e-2/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            cube = ssp.environment.add_cube(location=Vector((0, 40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((38e-2/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            
+            for obj in bpy.context.scene.objects:
+                if obj.type == 'MESH':
+                    if obj.name.startswith('Probe_')==False:
+                        if "RCS0" not in obj:
+                            obj["RCS0"] = 10.0
+                        RCS0 = obj["RCS0"]
+                        if "Backscatter N" not in obj:
+                            obj["Backscatter N"] = 1
+                        Backscatter_N = obj["Backscatter N"]
+                        if "Backscatter Dev (deg)" not in obj:
+                            obj["Backscatter Dev (deg)"] = 0.0
+            
+        
+        ssp.integratedSensorSuite.define_suite(0, location=Vector((-1, 0, 0)), rotation=Vector((0, 0, 0)))
+        radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=62e9)
+        
+        if st == '2 Slot as RIS':
+            N1,N2=2,10
+            ssp.ris.utils.add_ris(isuite=0, iris=0, location=Vector((1, 0,0)), rotation=Vector((np.pi/2,0, np.pi/2)), f0=62e9,N1=N1,N2=N2)
+                
+            for i1 in range(N1):
+                for i2 in range(N2):
+                    NF = 80
+                    name = f'RIS_Element_{0}_{0}_{i1}_{i2}_{NF}'
+                    ris = bpy.data.objects.get(name)
+                    ris['amplitude']=1
+                    ris['phase']=0
+                    if i1 == 0:
+                        ris.location = (-40e-3/2, (i2-N2/2.0)*3e-3, 0)
+                    if i1 == 1:
+                        ris.location = ( 40e-3/2, (i2-N2/2.0)*3e-3, 0)
+        
+
+        radar['Transmit_Power_dBm']=30
+        radar["Transmit_Antenna_Element_Pattern"] = "NotOmni"
+        radar["Transmit_Antenna_Element_Gain_db"] = 32
+        radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 2.5
+        radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 2.6
+        radar["Receive_Antenna_Element_Gain_db"] = 32
+        radar["Receive_Antenna_Element_Pattern"] = "NotOmni"
+        radar["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = 2.5
+        radar["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = 2.6
+            
+        name = f'TX_{0}_{0}_{1}_{0}_{0+1:05}'
+        tx = bpy.data.objects.get(name)
+        theta = TX_theta0
+        tx.rotation_euler = (0, np.deg2rad(theta), 0)
+        x = np.cos(np.deg2rad(theta))
+        y = np.sin(np.deg2rad(theta))
+        tx.location = (y, 0, x-1)
+        
+        name = f'RX_{0}_{0}_{1}_{0}_{0+1:05}'
+        rx = bpy.data.objects.get(name)
+        
+        theta_v = np.linspace(RX_theta0,RX_theta1,RX_thetaN)
+        for iframe,theta in enumerate(theta_v):
+            rx.rotation_euler = (0, np.deg2rad(theta), 0)
+            x = np.cos(np.deg2rad(theta))
+            y = np.sin(np.deg2rad(theta))
+            rx.location = (y, 0, x-1)
+            rx.keyframe_insert(data_path="location", frame=iframe+1)    
+            rx.keyframe_insert(data_path="rotation_euler", frame=iframe + 1)
+        
+        tx.scale = (.01, .01, .01)
+        rx.scale = (.1, .1, .1)
+        ssp.utils.set_frame_start_end(start=1,end=theta_v.shape[0])                     
+
 def sim_scenario(st):
     if st=='2 Cubes + 6843':
         processing_1()
@@ -144,6 +237,44 @@ def sim_scenario(st):
     
     if st == "Hand Gesture + 3 Xethru Nature paper":
         process_predefine_Hand_Gesture_3Xethru_Nature_paper()
+    if st == '2 Slot Example' or st == '2 Slot as RIS':
+        # TX_theta0 = -15.
+        # RX_theta0 = 0.
+        # RX_theta1 = 90.
+        # RX_thetaN = 900
+        
+        if "Extra Settings" in bpy.data.objects:
+            if "2 Slots, TX" in bpy.data.objects["Extra Settings"]:
+                TX_theta0 = float(bpy.data.objects["Extra Settings"]["2 Slots, TX"])
+            if "2 Slots, RX" in bpy.data.objects["Extra Settings"]:
+                if len(bpy.data.objects["Extra Settings"]["2 Slots, RX"].split(","))==3:
+                    RX_theta0,RX_theta1,RX_thetaN = [float(x) for x in bpy.data.objects["Extra Settings"]["2 Slots, RX"].split(",")]
+                    RX_thetaN = int(RX_thetaN)
+        
+        theta_v = np.linspace(RX_theta0,RX_theta1,RX_thetaN)
+
+        ssp.utils.trimUserInputs() 
+        ssp.config.restart()
+        wavelength = ssp.utils.research.simplest.wavelength(ssp.RadarSpecifications[0][0])
+        o = []
+        while ssp.config.run():
+            path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+            itx,irx=0,0
+            x = 0
+            for d_drate_amp in path_d_drate_amp[0][0][irx][0][0][itx]:
+                d=d_drate_amp[0]
+                amp=d_drate_amp[2]
+                x+= amp*np.exp(-1j*2*np.pi*d/wavelength)
+            o.append(np.abs(x))
+            ssp.utils.increaseCurrentFrame()
+        # return
+        plt.figure()
+        plt.plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o))
+        plt.grid()
+        plt.xlabel('Bistatic Angle (deg)')
+        plt.ylabel('Received Signal Power (dB)')
+        plt.show()
+    
         
 def predefine_movingcube_6843(interpolation_type='LINEAR'):
     #     Blender provides several interpolation types, and as of recent versions, there are 6 main interpolation options:
@@ -691,6 +822,12 @@ def predefine_Hand_Gesture_3Xethru_Nature_paper():
 #                 obj["RCS0"]=RCS0
     # if decimatefactor<1:
     #     ssp.utils.decimate_scene_all(decimation_ratio=decimatefactor)
+def setRCSToMaterial(startname="",RCS0=1):
+    for obj in bpy.data.objects:
+        if obj is not None:
+            if obj.type == 'MESH':
+                if obj.name.startswith(startname):
+                    obj["RCS0"]=RCS0
 def add_blenderfileobjects(blend_file_path, RCS0=1, decimatefactor=1, rotation=(0, 0, 0), translation=(0, 0, 0)):
     """
     Load objects from a Blender file, link them to the current scene, and apply transformations while preserving armature relationships.

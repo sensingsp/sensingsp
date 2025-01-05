@@ -75,8 +75,68 @@ def fetch_file(category, name):
             return download_file(file_path, local_file_path)
     print(f"File '{name}' not found in category '{category}'.")
     return None
+def visualize_file(category, name):
+    category_folder = os.path.join(ssp.config.temp_folder, "hub", category)
+    local_file_path = os.path.join(category_folder, f"{name}.blend")
+    if not os.path.exists(local_file_path):
+        print(f"File '{name}.blend' dosn't exists '{category_folder}'. First fetch it.")
+        return
+    ssp.utils.open_Blend(local_file_path)
+    print(f"Rendering {name}") 
+    Triangles = ssp.utils.exportBlenderTriangles()
+    image = ssp.utils.renderBlenderTriangles(Triangles)
+    ssp.utils.showTileImages([[image,category,name]])
+def visualize_hub():
+    fetch_all_files()
+    visualize_downloaded_files()
+def visualize_downloaded_files():
+    category_folder = os.path.join(ssp.config.temp_folder, "hub")
+    all_images = []
+    for root, _, files in os.walk(category_folder):
+        for file in files:
+            if not file.endswith(".blend"):
+                continue
+            ssp.utils.open_Blend(os.path.join(root, file))
+            print(f"Rendering {file}") 
+            Triangles = ssp.utils.exportBlenderTriangles()
+            image = ssp.utils.renderBlenderTriangles(Triangles)
+            all_images.append([image,root.split("/")[-1],file.split(".")[0]])   
+    ssp.utils.showTileImages(all_images)        
+def list_downloaded_files():
+    category_folder = os.path.join(ssp.config.temp_folder, "hub")
+    for root, _, files in os.walk(category_folder):
+        for file in files:
+            # print(os.path.relpath(os.path.join(root, file), category_folder))
+            print(os.path.join(root, file))
 
+def fetch_all_files():
+    """
+    Fetches all .blend files from all categories based on metadata.json.
+    If the category folder doesn't exist in ssp.config.temp_folder, it creates it.
+    If the file doesn't exist in the category folder, it downloads and saves it.
+    """
+    metadata = load_metadata()
+    if not metadata:
+        print("No metadata available.")
+        return
 
+    for category, files in metadata.items():
+        category_folder = os.path.join(ssp.config.temp_folder, "hub")
+        os.makedirs(category_folder, exist_ok=True)
+        category_folder = os.path.join(category_folder, category)
+        os.makedirs(category_folder, exist_ok=True)
+
+        for item in files:
+            name = item["name"]
+            local_file_path = os.path.join(category_folder, f"{name}.blend")
+            if os.path.exists(local_file_path):
+                print(f"File '{name}.blend' already exists in '{category_folder}'.")
+            else:
+                file_path = item["path"]
+                print(f"File '{name}.blend' not found in '{category_folder}'. Downloading...")
+                download_file(file_path, local_file_path)
+
+    print("All files downloaded.")
 def fetch_random_file():
     """
     Fetches a random .blend file from any category based on metadata.json.

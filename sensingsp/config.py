@@ -20,6 +20,7 @@ class Config():
             plt.rcParams['text.usetex'] = False
         self.ui_available = self.check_ui_available()
         self.temp_folder = self.create_temp_folder('SensingSP')
+        self.AddRadar_ULA_N = 4
         self.Paths = []
         self.CurrentFrame = 1
         self.CurrentTime  = 0
@@ -78,6 +79,8 @@ class Config():
                 ('Ray Tracing 1', "Ray Tracing 1", "Ray Tracing 1"),
                 ('Ray Tracing 2', "Ray Tracing 2", "Ray Tracing 2"),
                 ('Ray Tracing 3', "Ray Tracing 3", "Ray Tracing 3"),
+                ('2 Slot Example', "2 Slot Example", "2 Slot Example"),
+                ('2 Slot as RIS', "2 Slot as RIS", "2 Slot as RIS"),
             ]
         self.extratypes =[
                 ('Environment Meshes', "Environment Meshes", "Environment Meshes"),

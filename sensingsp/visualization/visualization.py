@@ -85,14 +85,16 @@ def visualizeProcessingOutputs(ProcessingOutputs):
   plt.show()
 
 def visualize_radar_path_d_drate_amp(path_d_drate_amp, option = 0):
-  Channel_d_fd_amp=np.array([[float(d),float(dr),float(a)] for d,dr,a,m in path_d_drate_amp[0][0][0][0][0][0]])
+  Channel_d_fd_amp=np.array([[float(d),float(dr),float(a),len(m)] for d,dr,a,m in path_d_drate_amp[0][0][0][0][0][0]])
   if option == 0:
     fig, ax = plt.subplots(1,1)
     ax = fig.add_subplot(1, 1, 1 , projection='3d')
-    ax.scatter(Channel_d_fd_amp[:,0],Channel_d_fd_amp[:,1],Channel_d_fd_amp[:,2])
+    ax.scatter(Channel_d_fd_amp[:,0],Channel_d_fd_amp[:,1],20*np.log10(Channel_d_fd_amp[:,2]))
+    ind = np.where(Channel_d_fd_amp[:,3]>1)
+    ax.scatter(Channel_d_fd_amp[ind,0],Channel_d_fd_amp[ind,1],20*np.log10(Channel_d_fd_amp[ind,2]),color='red')
     ax.set_xlabel('Distance (m)')
     ax.set_ylabel('Distance Rate (m/s)') 
-    ax.set_zlabel('Amplitude (v)')
+    ax.set_zlabel('Amplitude (dB)')
     # ax.set_box_aspect([1,1,1])  
     plt.show()
     # plt.draw()

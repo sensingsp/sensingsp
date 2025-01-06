@@ -12,10 +12,10 @@ def runSimpleScenario():
 
     ssp.radar.utils.printAntennaInfp(radar)
 
-    azBW = 60
-    elBW = 100
+    azBW = 80
+    elBW = 20
     gaindB = 6
-    radar['Transmit_Power_dBm']=30
+    radar['Transmit_Power_dBm']=18
     radar["Transmit_Antenna_Element_Pattern"] = "NotOmni"
     radar["Transmit_Antenna_Element_Gain_db"] = gaindB
     radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = azBW

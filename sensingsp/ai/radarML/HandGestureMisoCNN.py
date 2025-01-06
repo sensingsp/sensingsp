@@ -62,7 +62,39 @@ def initialize_weights_lecun(m):
         nn.init.constant_(m.weight, 1)
         nn.init.constant_(m.bias, 0)
 
+def normalize_along_rows(X):
+    min_vals = np.min(X, axis=1, keepdims=True)
+    max_vals = np.max(X, axis=1, keepdims=True)
+    denom = np.where((max_vals - min_vals) == 0, 1, (max_vals - min_vals))
+    X_norm = (X - min_vals) / denom
+    return X_norm.astype(np.float32)
 
+def load_sample(matfile):
+    mat_data = loadmat(matfile)
+    
+    left = mat_data.get("Left")
+    top = mat_data.get("Top")
+    right = mat_data.get("Right")
+    b = [1, -1]
+    a = [1, -0.9]
+    left = lfilter(b, a, left, axis=0)
+    top = lfilter(b, a, top, axis=0)
+    right = lfilter(b, a, right, axis=0)
+    left = normalize_along_rows(left)
+    top = normalize_along_rows(top)
+    right = normalize_along_rows(right)
+    slow_time_per_sample = 90
+    B = int(left.shape[0]/slow_time_per_sample)
+    o=[]
+    for i in range(B):
+        x1 = left[i*slow_time_per_sample:(i+1)*slow_time_per_sample]
+        x2 = top[i*slow_time_per_sample:(i+1)*slow_time_per_sample]
+        x3 = right[i*slow_time_per_sample:(i+1)*slow_time_per_sample]
+        radar_tensor = np.stack([x1, x2, x3], axis=0)  # shape: (3,90,189)
+        radar_tensor = torch.tensor(radar_tensor, dtype=torch.float32).unsqueeze(0)
+        o.append(radar_tensor)
+    return o
+    
 class RadarGestureDataset(Dataset):
     def __init__(self, data_folder, max_folder_number=1e6, clutter_removal=True,PercentBar=False):
         self.data_folder = data_folder

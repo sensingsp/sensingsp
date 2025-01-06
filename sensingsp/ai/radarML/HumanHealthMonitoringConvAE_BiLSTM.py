@@ -68,6 +68,17 @@ def extract_file_info(file_name):
         }
     else:
         raise ValueError("File name does not match the expected format")
+
+def load_sample(matfile,matfileecg):
+    radar_mat = loadmat(matfile)
+    ecg_mat = loadmat(matfileecg)
+    radar_signal = radar_mat['radar_l'].squeeze() 
+    ecg_signal = ecg_mat['ecg_l'].squeeze() 
+
+    radar_signal = torch.tensor(radar_signal, dtype=torch.float32).unsqueeze(0)  # (1, 1024)
+    ecg_signal = torch.tensor(ecg_signal, dtype=torch.float32).unsqueeze(0)      # (1, 1024)
+    return radar_signal, ecg_signal
+
 class RadarECGDataset(Dataset):
     def __init__(self, radar_dir, ecg_dir, transform_ecg=True):
         self.radar_files = sorted(glob.glob(os.path.join(radar_dir, '*.mat')))
@@ -943,6 +954,7 @@ class RadarHumanHMApp(QMainWindow):
         # -----------------------------
         # Model, Loss, Optimizer
         # -----------------------------
+        
         if self.combobox_model.currentIndex()==0:
             self.model = Layer1_HumanHM()
         else:
@@ -1045,7 +1057,7 @@ class RadarHumanHMApp(QMainWindow):
                 plt.pause(0.001)
                 plt.gcf().canvas.flush_events()
             
-
+        torch.save(self.model.state_dict(), self.savebestmodelpath)
         # Add actual training logic here
         plt.show()
         self.status_label.setText("Status: Training completed!")

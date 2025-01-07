@@ -107,7 +107,7 @@ def visualize_downloaded_files():
             print(f"Rendering {file}") 
             Triangles = ssp.utils.exportBlenderTriangles()
             image = ssp.utils.renderBlenderTriangles(Triangles)
-            all_images.append([image,root.split("/")[-1],file.split(".")[0]])   
+            all_images.append([image,os.path.basename(root),file.split(".")[0]])   
     ssp.utils.showTileImages(all_images)        
 def list_downloaded_files():
     category_folder = os.path.join(ssp.config.temp_folder, "hub")

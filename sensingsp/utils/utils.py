@@ -16,12 +16,19 @@ import cv2
 def initialize_environment():
    ssp.utils.delete_all_objects()
    ssp.utils.define_settings()
-def initialize_simulation():
+def initialize_simulation(startframe=1,endframe=2,RunonGPU=False,rayTracing=2):
   ssp.utils.define_settings()
-  ssp.utils.set_frame_start_end(start=1,end=2)
+  ssp.utils.set_frame_start_end(start=startframe,end=endframe)
   ssp.utils.save_Blender()
   ssp.utils.trimUserInputs() 
-  ssp.config.restart()
+  ssp.config.restart()  
+  ssp.utils.useCUDA(RunonGPU)
+  if rayTracing==1:
+    ssp.utils.set_RayTracing_light()
+  elif rayTracing==2:
+    ssp.utils.set_RayTracing_balanced()
+  elif rayTracing==3:
+    ssp.utils.set_RayTracing_advanced_intense()
 
 def set_RayTracing_advanced_intense():  
   bpy.data.objects["Simulation Settings"]["do RayTracing LOS"] = True
@@ -524,10 +531,14 @@ def showTileImages(images):
         for i, ax in enumerate(axs.flat):
             if i < len(images):
                 ax.imshow(images[i][0])
-                ax.set_title(f'{images[i][1]}, {images[i][2]}')
+                title = f'{images[i][1]}, {images[i][2]}'
+                
+                ax.set_title(title)
                 ax.axis('off')
             else:
                 ax.axis('off')
+    output_path = os.path.join(ssp.config.temp_folder,'triangles_rendered.png')
+    fig.savefig(output_path, dpi=300)
     plt.show()
 
 def renderBlenderTriangles(Triangles):

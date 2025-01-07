@@ -69,12 +69,7 @@ def normalize_along_rows(X):
     X_norm = (X - min_vals) / denom
     return X_norm.astype(np.float32)
 
-def load_sample(matfile):
-    mat_data = loadmat(matfile)
-    
-    left = mat_data.get("Left")
-    top = mat_data.get("Top")
-    right = mat_data.get("Right")
+def make_sample(left,top,right):
     b = [1, -1]
     a = [1, -0.9]
     left = lfilter(b, a, left, axis=0)
@@ -94,7 +89,13 @@ def load_sample(matfile):
         radar_tensor = torch.tensor(radar_tensor, dtype=torch.float32).unsqueeze(0)
         o.append(radar_tensor)
     return o
+def load_sample(matfile):
+    mat_data = loadmat(matfile)
     
+    left = mat_data.get("Left")
+    top = mat_data.get("Top")
+    right = mat_data.get("Right")
+    return make_sample(left,top,right)
 class RadarGestureDataset(Dataset):
     def __init__(self, data_folder, max_folder_number=1e6, clutter_removal=True,PercentBar=False):
         self.data_folder = data_folder

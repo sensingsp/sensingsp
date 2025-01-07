@@ -28,7 +28,7 @@ def add_ris(isuite=0, iris=0, location=Vector((0, 0, 0)), rotation=Vector((np.pi
     bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=location, rotation=rotation, scale=(1, 1, 1))
     empty = bpy.context.object
     empty.name = f'RISPlane_{isuite}_{iris}'
-    empty["Center_Frequency_GHz"] = 70
+    empty["Center_Frequency_GHz"] = f0/1e9
     empty["passive active"] = passive_active
     empty["steeringPhase_az_el"] = steeringPhase_az_el
     # empty["moein_boolean"] = True

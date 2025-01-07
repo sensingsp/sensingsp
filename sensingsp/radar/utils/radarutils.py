@@ -1939,6 +1939,9 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         N = ssp.config.AddRadar_ULA_N
         radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[-N*(i-0)*3e8/76e9/2 for i in range(N)],LinearArray_RXPos=[-i*3e8/76e9/2 for i in range(N)])
         return radar
+    if radarSensor==RadarSensorsCategory.SISO_mmWave76GHz:
+        radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 
+        return radar
     return None
 
 

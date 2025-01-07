@@ -81,6 +81,7 @@ class Config():
                 ('Ray Tracing 3', "Ray Tracing 3", "Ray Tracing 3"),
                 ('2 Slot Example', "2 Slot Example", "2 Slot Example"),
                 ('2 Slot as RIS', "2 Slot as RIS", "2 Slot as RIS"),
+                ('Target RCS Simulation', "Target RCS Simulation", "Target RCS Simulation")
             ]
         self.extratypes =[
                 ('Environment Meshes', "Environment Meshes", "Environment Meshes"),

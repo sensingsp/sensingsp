@@ -14,6 +14,27 @@ def make_simple_scenario():
 def run_simple_chain():
     processing_1()
 def add_scenario(st):
+    if st=='Target RCS Simulation':
+        ssp.utils.initialize_environment()
+        rangeTarget = 20
+        radar = ssp.radar.utils.addRadar(
+            radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz,
+            location_xyz=[-rangeTarget, 0, 0])
+
+        ssp.radar.utils.addTarget(
+            refRadar=radar,
+            range=rangeTarget-0.5)
+        NF = 360
+        radar.parent.rotation_euler  = (0,0,0)
+        radar.parent.keyframe_insert(data_path="rotation_euler", frame=1)
+        radar.parent.rotation_euler  = (0,0,2*np.pi)
+        radar.parent.keyframe_insert(data_path="rotation_euler", frame=NF)
+        for fcurve in radar.parent.animation_data.action.fcurves:
+            for keyframe in fcurve.keyframe_points:
+                keyframe.interpolation = 'LINEAR'
+
+        ssp.utils.initialize_simulation(startframe=1,endframe=NF,RunonGPU=False,rayTracing=3)
+
     if st=='2 Cubes + 6843':
         predefine_movingcube_6843()
     if st == 'Pattern SISO':
@@ -103,7 +124,7 @@ def add_scenario(st):
         TX_theta0 = -20.
         RX_theta0 = 15.
         RX_theta1 = 85.
-        RX_thetaN = 1000
+        RX_thetaN = 100
         
         if "Extra Settings" in bpy.data.objects:
             if "2 Slots, TX" in bpy.data.objects["Extra Settings"]:
@@ -121,16 +142,25 @@ def add_scenario(st):
             sim_axes["2 Slots, RX"] = f'{RX_theta0},{RX_theta1},{RX_thetaN}' 
         
         ssp.utils.define_settings()
-
+        
+        HL = ssp.LightSpeed/62e9/2
+        L = 38e-2 # 6*HL
+        N2 = int(L/HL)
+        option = 0
         if st == '2 Slot Example':
-            cube = ssp.environment.add_cube(location=Vector((0, -40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((38e-2/2, 5e-3/2, 1e-3/2)), subdivision=0)
-            cube = ssp.environment.add_cube(location=Vector((0, 40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((38e-2/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            if option:
+                cube = ssp.environment.add_cube(location=Vector((0, -40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
+                cube = ssp.environment.add_cube(location=Vector((0, 40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            else:
+                for i in range(N2):
+                    ssp.environment.add_cube(location=Vector((0, -40e-3/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
+                    ssp.environment.add_cube(location=Vector((0, 40e-3/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
             
             for obj in bpy.context.scene.objects:
                 if obj.type == 'MESH':
                     if obj.name.startswith('Probe_')==False:
                         if "RCS0" not in obj:
-                            obj["RCS0"] = 10.0
+                            obj["RCS0"] = 3.0
                         RCS0 = obj["RCS0"]
                         if "Backscatter N" not in obj:
                             obj["Backscatter N"] = 1
@@ -143,7 +173,10 @@ def add_scenario(st):
         radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=62e9)
         
         if st == '2 Slot as RIS':
-            N1,N2=2,10
+            
+            N1,N2=2,158
+            N2 = int(L/HL)
+            
             ssp.ris.utils.add_ris(isuite=0, iris=0, location=Vector((1, 0,0)), rotation=Vector((np.pi/2,0, np.pi/2)), f0=62e9,N1=N1,N2=N2)
                 
             for i1 in range(N1):
@@ -151,12 +184,12 @@ def add_scenario(st):
                     NF = 80
                     name = f'RIS_Element_{0}_{0}_{i1}_{i2}_{NF}'
                     ris = bpy.data.objects.get(name)
-                    ris['amplitude']=1
+                    ris['amplitude']=np.sqrt(1/HL)  # 1/HL for test
                     ris['phase']=0
                     if i1 == 0:
-                        ris.location = (-40e-3/2, (i2-N2/2.0)*3e-3, 0)
+                        ris.location = (-40e-3/2, (i2-N2/2.0)*HL, 0)
                     if i1 == 1:
-                        ris.location = ( 40e-3/2, (i2-N2/2.0)*3e-3, 0)
+                        ris.location = ( 40e-3/2, (i2-N2/2.0)*HL, 0)
         
 
         radar['Transmit_Power_dBm']=30
@@ -191,7 +224,9 @@ def add_scenario(st):
         
         tx.scale = (.01, .01, .01)
         rx.scale = (.1, .1, .1)
-        ssp.utils.set_frame_start_end(start=1,end=theta_v.shape[0])                     
+        ssp.utils.set_frame_start_end(start=1,end=theta_v.shape[0])     
+        ssp.utils.set_RayTracing_advanced_intense()  
+        ssp.utils.save_Blender()              
 
 def sim_scenario(st):
     if st=='2 Cubes + 6843':
@@ -266,12 +301,38 @@ def sim_scenario(st):
                 amp=d_drate_amp[2]
                 x+= amp*np.exp(-1j*2*np.pi*d/wavelength)
             o.append(np.abs(x))
+            print(ssp.config.CurrentFrame)
             ssp.utils.increaseCurrentFrame()
         # return
         plt.figure()
         plt.plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o))
         plt.grid()
         plt.xlabel('Bistatic Angle (deg)')
+        plt.ylabel('Received Signal Power (dB)')
+        plt.show()
+    
+    if st=='Target RCS Simulation':
+        ssp.utils.trimUserInputs() 
+        ssp.config.restart()
+        wavelength = ssp.utils.research.simplest.wavelength(ssp.RadarSpecifications[0][0])
+        o = []
+        while ssp.config.run():
+            path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+            itx,irx=0,0
+            x = 0
+            for d_drate_amp in path_d_drate_amp[0][0][irx][0][0][itx]:
+                d=d_drate_amp[0]
+                amp=d_drate_amp[2]
+                x+= amp*np.exp(-1j*2*np.pi*d/wavelength)
+            o.append(np.abs(x))
+            print(ssp.config.CurrentFrame)
+            ssp.utils.increaseCurrentFrame()
+        # return
+        o=np.array(o)
+        plt.figure()
+        plt.plot(20*np.log10(o/np.max(o)))
+        plt.grid()
+        plt.xlabel('Angle (deg)')
         plt.ylabel('Received Signal Power (dB)')
         plt.show()
     

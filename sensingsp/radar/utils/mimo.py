@@ -5,6 +5,62 @@ import scipy.stats as stats
 import scipy.signal.windows as scipy_windows
 import math
 import numba
+import numpy as np
+
+def matlab_like_hadamard(n, classname='double'):
+    """
+    Generate a Hadamard matrix of order n.
+
+    Parameters:
+    n (int): Order of the Hadamard matrix.
+    classname (str): Type of the output matrix ('double' or 'single'). Default is 'double'.
+
+    Returns:
+    numpy.ndarray: Hadamard matrix of order n.
+
+    Raises:
+    ValueError: If n is not valid for generating a Hadamard matrix.
+    """
+    if classname not in ['single', 'double']:
+        raise ValueError("classname must be 'single' or 'double'")
+
+    # Check if n, n/12, or n/20 is a power of 2
+    def is_power_of_two(x):
+        return x > 0 and (x & (x - 1)) == 0
+
+    candidates = [n, n // 12, n // 20]
+    valid_indices = [i for i, val in enumerate(candidates) if is_power_of_two(val)]
+
+    if len(valid_indices) == 0 or n <= 0:
+        raise ValueError("Invalid input: n must be a positive integer where n, n/12, or n/20 is a power of 2.")
+
+    k = valid_indices[0]
+    e = int(np.log2(candidates[k]))
+
+    if k == 0:  # N = 1 * 2^e
+        H = np.ones((1, 1), dtype=np.float32 if classname == 'single' else np.float64)
+
+    elif k == 1:  # N = 12 * 2^e
+        base = np.array([
+            [-1, -1,  1, -1, -1, -1,  1,  1,  1, -1,  1],
+            [-1,  1, -1,  1,  1,  1, -1, -1, -1,  1, -1]
+        ])
+        toeplitz_part = np.array([np.roll(base[0], i) for i in range(len(base[0]))])
+        H = np.vstack([np.ones((1, 12)), np.hstack([np.ones((11, 1)), toeplitz_part])])
+
+    elif k == 2:  # N = 20 * 2^e
+        base = np.array([
+            [-1, -1,  1,  1, -1, -1, -1, -1,  1, -1,  1, -1,  1,  1,  1,  1, -1, -1,  1],
+            [ 1, -1, -1,  1,  1, -1, -1, -1, -1,  1, -1,  1, -1,  1,  1,  1,  1, -1, -1]
+        ])
+        hankel_part = np.array([np.roll(base[0], i) for i in range(len(base[0]))])
+        H = np.vstack([np.ones((1, 20)), np.hstack([np.ones((19, 1)), hankel_part])])
+
+    # Kronecker product construction
+    for _ in range(e):
+        H = np.block([[H, H], [H, -H]])
+
+    return H.astype(np.float32 if classname == 'single' else np.float64)
 
 
 
@@ -53,7 +109,8 @@ class MIMO_Functions:
             if p%M == m:
               W[p,m]=1
       case "BPM":
-        H = hadamard(M, dtype=complex)
+        # H = hadamard(M, dtype=complex)
+        H = matlab_like_hadamard(M)
         for p in range(NPulse):
           for m in range(M):
             W[p,m]=H[p%M,m]

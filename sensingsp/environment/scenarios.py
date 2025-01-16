@@ -144,23 +144,38 @@ def add_scenario(st):
         ssp.utils.define_settings()
         
         HL = ssp.LightSpeed/62e9/2
-        L = 38e-2 # 6*HL
-        N2 = int(L/HL)
-        option = 0
+        L = 138e-2 
+        Sec = HL
+        N2 = int(L/Sec)
+        Lx = 7.5e-3
+        N2x = int(Lx/Sec)
+        D0 = 25e-3
+        option = 2
         if st == '2 Slot Example':
-            if option:
-                cube = ssp.environment.add_cube(location=Vector((0, -40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
-                cube = ssp.environment.add_cube(location=Vector((0, 40e-3/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
-            else:
+            ssp.utils.set_RayTracing_advanced_intense()
+            if option==1:
+                cube = ssp.environment.add_cube(location=Vector((0, -D0/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
+                cube = ssp.environment.add_cube(location=Vector((0, D0/2, 0)), direction=Vector((1, 0, 0)), scale=Vector((L/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            elif option==0:
                 for i in range(N2):
-                    ssp.environment.add_cube(location=Vector((0, -40e-3/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
-                    ssp.environment.add_cube(location=Vector((0, 40e-3/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
-            
+                    ssp.environment.add_cube(location=Vector((0, -D0/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
+                    ssp.environment.add_cube(location=Vector((0, D0/2, i*HL-L/2)), direction=Vector((1, 0, 0)), scale=Vector((HL/2, 5e-3/2, 1e-3/2)), subdivision=0)
+            elif option==2:
+                ssp.utils.set_RayTracing_light()
+                for i in range(N2):
+                    for j in range(N2x):
+                        bpy.ops.mesh.primitive_plane_add(size=Sec, enter_editmode=False, align='WORLD', location=(0, (j-N2x/2.0)*Sec-D0/2, i*Sec-L/2), scale=(1, 1, 1))
+                        bpy.context.object.rotation_euler[2] = 1.5708
+                        bpy.context.object.rotation_euler[0] = 1.5708
+                        bpy.ops.mesh.primitive_plane_add(size=Sec, enter_editmode=False, align='WORLD', location=(0, (j-N2x/2.0)*Sec+D0/2, i*Sec-L/2), scale=(1, 1, 1))
+                        bpy.context.object.rotation_euler[2] = 1.5708
+                        bpy.context.object.rotation_euler[0] = 1.5708
+
             for obj in bpy.context.scene.objects:
                 if obj.type == 'MESH':
                     if obj.name.startswith('Probe_')==False:
                         if "RCS0" not in obj:
-                            obj["RCS0"] = 3.0
+                            obj["RCS0"] = 1.
                         RCS0 = obj["RCS0"]
                         if "Backscatter N" not in obj:
                             obj["Backscatter N"] = 1
@@ -173,7 +188,7 @@ def add_scenario(st):
         radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=62e9)
         
         if st == '2 Slot as RIS':
-            
+            ssp.utils.set_RayTracing_advanced_intense()
             N1,N2=2,158
             N2 = int(L/HL)
             
@@ -187,9 +202,9 @@ def add_scenario(st):
                     ris['amplitude']=np.sqrt(1/HL)  # 1/HL for test
                     ris['phase']=0
                     if i1 == 0:
-                        ris.location = (-40e-3/2, (i2-N2/2.0)*HL, 0)
+                        ris.location = (-D0/2, (i2-N2/2.0)*HL, 0)
                     if i1 == 1:
-                        ris.location = ( 40e-3/2, (i2-N2/2.0)*HL, 0)
+                        ris.location = ( D0/2, (i2-N2/2.0)*HL, 0)
         
 
         radar['Transmit_Power_dBm']=30
@@ -225,7 +240,11 @@ def add_scenario(st):
         tx.scale = (.01, .01, .01)
         rx.scale = (.1, .1, .1)
         ssp.utils.set_frame_start_end(start=1,end=theta_v.shape[0])     
-        ssp.utils.set_RayTracing_advanced_intense()  
+        if option ==3:
+            file="save_frompython.blend"
+            folder = ssp.config.temp_folder
+            ssp.environment.add_blenderfileobjects(os.path.join(folder, file),RCS0=1)
+            
         ssp.utils.save_Blender()              
 
 def sim_scenario(st):
@@ -304,11 +323,20 @@ def sim_scenario(st):
             print(ssp.config.CurrentFrame)
             ssp.utils.increaseCurrentFrame()
         # return
-        plt.figure()
-        plt.plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o))
-        plt.grid()
-        plt.xlabel('Bistatic Angle (deg)')
-        plt.ylabel('Received Signal Power (dB)')
+        fig, axs = plt.subplots(1,2)
+        axs[0].plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o))
+        # plt.plot(-TX_theta0+theta_v[:len(o)],(o))
+        om = np.max(20*np.log10(o))
+        axs[0].set_ylim([om-35,om+5])   
+        axs[0].grid()
+        axs[0].set_xlabel('Bistatic Angle (deg)')
+        axs[0].set_ylabel('Received Signal Power (dB)')
+        axs[1].plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o)-om)
+        # plt.plot(-TX_theta0+theta_v[:len(o)],(o))
+        axs[1].set_ylim([-15,0])   
+        axs[1].grid()
+        axs[1].set_xlabel('Bistatic Angle (deg)')
+        axs[1].set_ylabel('Normalized Received Signal Power (dB)')
         plt.show()
     
     if st=='Target RCS Simulation':
@@ -832,6 +860,7 @@ def update_pointclouds(all_pcs,ax):
     
 def predefine_Hand_Gesture_3Xethru_Nature_paper():
     addfile = os.path.join(ssp.config.temp_folder,'assets/HandGest/up_down_swipe.blend')
+    addfile = ssp.utils.hub.fetch_file("animation","Hand")
     if "Extra Settings" in bpy.data.objects:
         
         if "Hand Gesture 3D Asset" in bpy.data.objects["Extra Settings"]:
@@ -1054,9 +1083,45 @@ def process_predefine_Hand_Gesture_3Xethru_Nature_paper():
             if "Hand Gesture output" in bpy.data.objects["Extra Settings"]:
                 savefilename = bpy.data.objects["Extra Settings"]["Hand Gesture output"]
         savemat(savefilename, data_to_save)
+        simulated_samples = ssp.ai.radarML.HandGestureMisoCNN.make_sample(data_save[0],data_save[1],data_save[2])
+
         # np.save(os.path.join(ssp.config.temp_folder, 'Left.npy'),data_save[0])
         # np.save(os.path.join(ssp.config.temp_folder, 'Right.npy'),data_save[1])
         # np.save(os.path.join(ssp.config.temp_folder, 'Top.npy'),data_save[2])
+        import torch
+        downloaded_model_path = ssp.utils.hub.fetch_pretrained_model("models", "HandGesture MisoCNN")
+        if downloaded_model_path:
+            model = ssp.ai.radarML.HandGestureMisoCNN.MultiInputModel(num_classes=12)
+            model.load_state_dict(torch.load(downloaded_model_path))
+            dataset = ssp.ai.radarML.HandGestureMisoCNN.RadarGestureDataset(data_folder='')  
+            for radar_tensor in simulated_samples:
+                with torch.no_grad():
+                    outputs = model( radar_tensor )
+                    _ , preds = torch.max( outputs , 1 )
+                    Gi = f"G{preds.item()+1}"
+                    print(f"Sample from Simulator -> classified as {Gi}: {dataset.gestureVocabulary[preds.item()]}")
+                    probabilities = torch.nn.functional.softmax(outputs, dim=1)
+                    classes,softmax_probs=[],[]
+                    for idx, prob in enumerate(probabilities[0]):
+                        class_name = dataset.gestureVocabulary[idx]
+                        print(f"Class {class_name}: {prob:.4f} : {outputs[0,idx]:.4f}")
+                        classes.append(class_name)
+                        softmax_probs.append(prob.cpu())
+                    for idx, prob in enumerate(softmax_probs):
+                        bar_length = int(prob * 50)  
+                        print(f"Class {classes[idx]:<20}: {prob:.2f}: {'#' * bar_length}")
+                    plt.figure(figsize=(8, 5))
+                    plt.bar(classes, softmax_probs, color='skyblue')
+                    plt.xlabel('Classes', fontsize=12)
+                    plt.ylabel('Probability', fontsize=12)
+                    plt.title('Class Probabilities', fontsize=14)
+                    plt.ylim(0, 1)
+                    for i, prob in enumerate(softmax_probs):
+                        plt.text(i, prob + 0.02, f'{prob:.2f}', ha='center', fontsize=10)
+
+                    plt.title(f"Sample from Simulator : classified as {Gi}: {dataset.gestureVocabulary[preds.item()]}")
+                    
+        
 
     plt.tight_layout()
     plt.show()
@@ -1121,9 +1186,9 @@ def deform_scenario_1(angLim=30,Lengths = [.2,.1,.1],elps=[.25,.1,.5],sbd=4,cycl
     # Exit pose mode
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # === Save Blender File ===
-    ssp.utils.save_Blender()
-
+    # # === Save Blender File ===
+    # ssp.utils.save_Blender()
+    return armature
 def handGesture_simple(G=1):
     ssp.utils.delete_all_objects()
 

@@ -271,7 +271,7 @@ class MODWTLayer_fix(nn.Module):
             selected_levels (iterable): Levels of detail coefficients to return.
             trim_approx (bool): Whether to trim the final approximation coefficients.
         """
-        super(MODWTLayer, self).__init__()
+        super(MODWTLayer_fix, self).__init__()
 
         # Define wavelet filters for sym4
         if wavelet == 'sym4':
@@ -357,15 +357,6 @@ class MODWTLayer_fix(nn.Module):
 
 class MODWTLayer(nn.Module):
     def __init__(self, wavelet='sym4', level=6, selected_levels=range(3, 5), trim_approx=False):
-        """
-        Modified Discrete Wavelet Transform (MODWT) as a PyTorch Layer with learnable filters.
-
-        Args:
-            wavelet (str): Wavelet type ('sym4' supported).
-            level (int): Number of decomposition levels.
-            selected_levels (iterable): Levels of detail coefficients to return.
-            trim_approx (bool): Whether to trim the final approximation coefficients.
-        """
         super(MODWTLayer, self).__init__()
 
         # Define and initialize wavelet filters for sym4
@@ -712,6 +703,10 @@ class RadarHumanHMApp(QMainWindow):
         self.modwt_button = QPushButton("MODWT")
         self.modwt_button.clicked.connect(self.modwt_but)
         main_layout.addWidget(self.modwt_button)
+        self.testpretrained_button = QPushButton("Test Pretrained NN")
+        self.testpretrained_button.clicked.connect(self.testpretrained_but)
+        main_layout.addWidget(self.testpretrained_button)
+        
 
         # Row 3
         # row3_layout = QHBoxLayout()
@@ -1175,7 +1170,8 @@ class RadarHumanHMApp(QMainWindow):
                 break
 
         plt.show()
-   
+    def testpretrained_but(self):
+        ssp.utils.research.algorithms.MLRadarHumanHealthMonitoring.runSimpleScenario(trained_Model_index = 1, health_state_index = 1, sample_index = 20,sim=False)
     def modwt_but(self):
         fig, axs = plt.subplots(8, 1)
         ax = axs.flatten()

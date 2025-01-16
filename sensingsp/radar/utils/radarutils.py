@@ -24,6 +24,10 @@ class RadarSensorsCategory(Enum):
     Xhetru_X4 = 7
     ULA_AllRX = 8
     ULA_SameTXRX = 9
+    URA_AllRX = 10
+    URA_SameTXRX = 11
+    URA_AllTX = 12
+    URA_LinearHtxVrx = 13
 
 class RadarSignalGenerationConfigurations(Enum):
     Spillover_Enabled = 1
@@ -31,7 +35,16 @@ class RadarSignalGenerationConfigurations(Enum):
     RayTracing_Light = 3
     RayTracing_Balanced = 4
     RayTracing_Advanced = 5
+    CUDA_Enabled = 6
+    CUDA_Disabled = 7
 
+
+class MIMORadarTechnique(Enum):
+    TDM = 1
+    PhasedArray = 2
+    BPM = 3
+    DDM = 4
+    
 
 
 class RadarSpecJSON:
@@ -967,6 +980,60 @@ def predefined_array_configs_TI_AWR1642(isuite, iradar, location, rotation, f0=7
     empty["TXRXPos"]=[tx_positions,rx_positions]
     return empty    
 
+def predefined_array_configs_URA(isuite, iradar, location, rotation,NTX=[3,3],NRX=[2,2],dazimuth=.5,delevation=.5, f0=70e9): 
+    Lambda = LightSpeed / f0
+    Suitename = f'SuitePlane_{isuite}'
+    Suite_obj = bpy.data.objects[Suitename]
+
+    bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=location, rotation=rotation, scale=(1, 1, 1))
+    empty = bpy.context.object
+    empty.name = f'RadarPlane_{isuite}_{iradar}_{0}'
+    empty.parent = Suite_obj
+    empty = setDefaults(empty,f0)
+    s = 0.05
+    Type = 'SPOT'
+    tx_positions = []
+    k=0
+    for i in range(NTX[0]):
+        for j in range(NTX[1]):
+            bpy.ops.object.light_add(type=Type, radius=1, location=(NRX[0]*(i-np.mean(np.arange(NTX[0])))*Lambda*dazimuth, NRX[1]*(j-np.mean(np.arange(NTX[1])))*Lambda*delevation, 0))
+            tx = bpy.context.object
+            tx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+            tx.name = f'TX_{isuite}_{iradar}_{1}_{0}_{k+1:05}'
+            k+=1
+            tx.parent = empty
+            tx_positions.append((NRX[0]*(i-np.mean(np.arange(NTX[0])))*2.0*dazimuth, NRX[1]*(j-np.mean(np.arange(NTX[1])))*2.0*delevation))
+
+    s = 1
+    k=0
+    rx_positions = []
+    for i in range(NRX[0]):
+        for j in range(NRX[1]):
+            bpy.ops.object.camera_add(location=((i-np.mean(np.arange(NRX[0])))*Lambda*dazimuth, (j-np.mean(np.arange(NRX[1])))*Lambda*delevation, 0), rotation=(0, 0, 0))
+            rx = bpy.context.object
+            rx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+            rx.name = f'RX_{isuite}_{iradar}_{1}_{0}_{k+1:05}'
+            k+=1
+            rx.parent = empty
+            rx.data.lens = 10
+            rx_positions.append(((i-np.mean(np.arange(NRX[0])))*2.0*dazimuth, (j-np.mean(np.arange(NRX[1])))*2.0*delevation))
+    empty["TXRXPos"]=[tx_positions,rx_positions]
+    empty["antenna2azelIndex"]=[[],[]]
+    
+    p2y,p2z=[],[]
+    Mz = NTX[1]
+    My = NTX[0]
+    Nz = NRX[1]
+    Ny = NRX[0]
+    for imy in range(My):
+        for imz in range(Mz):
+            for iny in range(Ny):
+                for inz in range(Nz):
+                    p2z.append(inz+imz*Nz)
+                    p2y.append(iny+imy*Ny)
+    empty["antenna2azelIndex"]=[p2y,p2z]
+    return empty    
+
 
 
 def predefined_array_configs_3by1(isuite, iradar, location, rotation, f0=70e9):  
@@ -1396,7 +1463,7 @@ def setDefaults(empty,f0):
     empty['SaveSignalGenerationTime']=True
     empty['continuousCPIsTrue_oneCPIpeerFrameFalse']=False
     # empty['t_start_radar']=0
-    
+    empty['MIMO_Tech']='TDM'
     
     
     # empty['Timing'] = RadarTiming(t_start_radar=0.0, t_start_manual_restart_tx=1.0, t_last_pulse=10.0,
@@ -1941,6 +2008,26 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         return radar
     if radarSensor==RadarSensorsCategory.SISO_mmWave76GHz:
         radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 
+        return radar
+    if radarSensor==RadarSensorsCategory.URA_AllRX:
+        N,M = ssp.config.AddRadar_URA_NxNy
+        f0=76e9
+        radar = ssp.radar.utils.predefined_array_configs_URA(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)),NTX=[1,1],NRX=[N,M],dazimuth=.5,delevation=.5,f0=f0)
+        return radar
+    if radarSensor==RadarSensorsCategory.URA_SameTXRX:
+        N,M = ssp.config.AddRadar_URA_NxNy
+        f0=76e9
+        radar = ssp.radar.utils.predefined_array_configs_URA(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)),NTX=[N,M],NRX=[N,M],dazimuth=.5,delevation=.5,f0=f0)
+        return radar
+    if radarSensor==RadarSensorsCategory.URA_LinearHtxVrx:
+        N,M = ssp.config.AddRadar_URA_NxNy
+        f0=76e9
+        radar = ssp.radar.utils.predefined_array_configs_URA(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)),NTX=[N,1],NRX=[1,M],dazimuth=.5,delevation=.5,f0=f0)
+        return radar
+    if radarSensor==RadarSensorsCategory.URA_AllTX:
+        N,M = ssp.config.AddRadar_URA_NxNy
+        f0=76e9
+        radar = ssp.radar.utils.predefined_array_configs_URA(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)),NTX=[N,M],NRX=[1,1],dazimuth=.5,delevation=.5,f0=f0)
         return radar
     return None
 

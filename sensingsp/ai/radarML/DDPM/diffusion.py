@@ -661,15 +661,15 @@ def train(args):
     print('Done Training ...')
     
 
-# if __name__ == '__main__':
-#     train([])
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Arguments for ddpm image generation')
-    parser.add_argument('--config', dest='config_path',
-                        default='config/default.yaml', type=str)
-    args = parser.parse_args()
-    infer(args)
+    train([])
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser(description='Arguments for ddpm image generation')
+#     parser.add_argument('--config', dest='config_path',
+#                         default='config/default.yaml', type=str)
+#     args = parser.parse_args()
+#     infer(args)
 
 
 

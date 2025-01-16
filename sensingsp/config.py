@@ -21,6 +21,7 @@ class Config():
         self.ui_available = self.check_ui_available()
         self.temp_folder = self.create_temp_folder('SensingSP')
         self.AddRadar_ULA_N = 4
+        self.AddRadar_URA_NxNy = [4,4]
         self.Paths = []
         self.CurrentFrame = 1
         self.CurrentTime  = 0

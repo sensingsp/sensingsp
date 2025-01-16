@@ -455,6 +455,19 @@ class RadarMisoCNNApp(QMainWindow):
         row4_layout.addWidget(self.testfile_button)
         main_layout.addLayout(row4_layout)
 
+        
+        self.combobox_hub = QComboBox()
+        available_files = ssp.utils.hub.available_files()
+        all = []
+        for category, files in available_files.items():
+            if files:
+                for file_info in files:
+                    all.append(f'{category}/{file_info["name"]}')
+        self.combobox_hub.addItems(all)
+        self.loadhub_button = QPushButton("Load from Hub")
+        self.loadhub_button.clicked.connect(self.loadfromhub)
+        main_layout.addWidget(self.combobox_hub)
+        main_layout.addWidget(self.loadhub_button)
 
         # Status display
         self.status_label = QLabel("Status: Ready")
@@ -832,7 +845,14 @@ class RadarMisoCNNApp(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred during model visualization: {str(e)}")
-    
+    def loadfromhub(self):
+        file = self.combobox_hub.currentText()
+        hubcategory,hubname=file.split('/')
+        # ssp.utils.initialize_environment()
+        hand_file_path = ssp.utils.hub.fetch_file(category=hubcategory,name=hubname)
+        ssp.environment.add_blenderfileobjects(hand_file_path,RCS0=1,translation=(.55,.3,-.1),rotation=(0,0,np.pi/2))
+
+        
     def visualize_samples(self):
         # Placeholder for sample visualization logic
         self.status_label.setText("Status: Visualizing samples...")

@@ -200,7 +200,7 @@ def available_files():
                 print(f"  - Name: {file_info['name']}, Path: {file_info['path']}")
         else:
             print("  (No files available in this category)")
-        
+    return metadata
 def download_zipfile_extract_remove(url,zfile,save_path,path_append=True):
     os.makedirs(save_path, exist_ok=True)
     if path_append:

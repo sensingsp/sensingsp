@@ -55,6 +55,10 @@ def set_configurations(configurations):
       ssp.config.Radar_TX_RX_isolation = True
     elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.Spillover_Enabled:
       ssp.config.directReceivefromTX =  True
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.CUDA_Enabled:
+      ssp.utils.useCUDA(True)
+    elif config == ssp.radar.utils.RadarSignalGenerationConfigurations.CUDA_Disabled:
+      ssp.utils.useCUDA(False)
       
     
 
@@ -289,7 +293,7 @@ def trimUserInputs():
         # specifications['PrecodingMatrix'] = np.eye(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position']),dtype=np.complex128)
         specifications['M_TX'] = len(radarobject['TX'])
         specifications['N_RX'] = len(radarobject['RX'])
-        specifications['MIMO_Tech'] = 'TDM'
+        specifications['MIMO_Tech'] = radarobject['GeneralRadarSpec_Object']['MIMO_Tech']
         specifications['RangeFFT_OverNextP2'] = radarobject['GeneralRadarSpec_Object']['RangeFFT_OverNextP2']
         specifications['Range_Start'] = radarobject['GeneralRadarSpec_Object']['Range_Start']
         specifications['Range_End'] = radarobject['GeneralRadarSpec_Object']['Range_End']

@@ -1217,3 +1217,45 @@ def handGesture_simple(G=1):
     
     # === Save Blender File ===
     ssp.utils.save_Blender()
+
+
+
+def raytracing_rays():
+    o =[]
+    ssp.utils.trimUserInputs() 
+    ssp.config.restart()
+    while ssp.config.run():    
+        path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        for isrx,suiteRX_d_drate_amp in path_d_drate_amp.items():
+            for irrx,radarRX_d_drate_amp in suiteRX_d_drate_amp.items():
+                for irx,RX_d_drate_amp in radarRX_d_drate_amp.items():
+                    for istx,suiteTX_d_drate_amp in RX_d_drate_amp.items():
+                        for irtx,radarTX_d_drate_amp in suiteTX_d_drate_amp.items():
+                            for itx,TX_d_drate_amp in radarTX_d_drate_amp.items():
+                                for ip,p in enumerate(TX_d_drate_amp):
+                                    d,dr,a,m=p
+                                    tx = ssp.lastSuite_Position[istx]['Radar'][irtx]['TX-Position'][itx] 
+                                    rx = ssp.lastSuite_Position[isrx]['Radar'][irrx]['RX-Position'][irx]
+                                    v = [tx]
+                                    for mi in m:
+                                        if isinstance(mi, list) and len(mi) == 2 and isinstance(mi[1], Vector):
+                                            v.append(mi[1])
+                                        if isinstance(mi, str):
+                                            _, is0, ir0, iris0 = mi.split('_')
+                                            is0 = int(is0)
+                                            ir0 = int(ir0)
+                                            iris0 = int(iris0)
+                                            v.append(ssp.lastSuite_Position[is0]['RIS'][ir0]['Position'][iris0])
+                                    v.append(rx)
+                                    ray={}
+                                    ray['v']=v
+                                    ray["Ray Tracing 20log Amp (dB)"]=float(20*np.log10(a))
+                                    ray["Ray Tracing distance"]=float(d)
+                                    ray["Ray Tracing doppler * f0"]=float(dr)
+                                    ray["Middle Number"]=len(m)
+                                    ray["suiteradar"]=[isrx,irrx,irx,istx,irtx,itx]
+                                    o.append(ray)
+        ssp.utils.increaseCurrentFrame()
+        break
+    return o
+

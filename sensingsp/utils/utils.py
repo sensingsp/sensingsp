@@ -875,3 +875,23 @@ def set_axes_equal(ax):
     ax.set_xlim3d([x_middle - max_range / 2, x_middle + max_range / 2])
     ax.set_ylim3d([y_middle - max_range / 2, y_middle + max_range / 2])
     ax.set_zlim3d([z_middle - max_range / 2, z_middle + max_range / 2])
+
+
+def exportBlenderPolygons():
+   out=[]
+   for obj in bpy.context.scene.objects:
+      if obj.type == 'MESH':
+        mesh = obj.data
+        world_matrix = obj.matrix_world
+        p = []
+        for poly in mesh.polygons:
+            points=[]
+            for vidx in poly.vertices:
+                local_co = mesh.vertices[vidx].co
+                world_co = world_matrix @ local_co
+                points.append([world_co.x,world_co.y,world_co.z])
+            p.append(points)
+        out.append(p)
+   return out
+
+

@@ -11,7 +11,7 @@ def RayTracing():
         NRX = len(path_d_drate_amp[0][0])
         NTX = len(path_d_drate_amp[0][0][0][0][0])
         distance = np.zeros((NTX,NRX))
-        d0 = path_d_drate_amp[0][0][0][0][0][0][0][0]
+        d0 = 0*path_d_drate_amp[0][0][0][0][0][0][0][0]
         for irx in range(NRX):
             for itx in range(NTX):
                 for d_drate_amp in path_d_drate_amp[0][0][irx][0][0][itx]:
@@ -20,6 +20,16 @@ def RayTracing():
                     break
         break
     return distance 
+def tx_rx_Location():
+    ssp.utils.trimUserInputs()
+    if len(ssp.RadarSpecifications)==0:
+        return [],[]
+    if len(ssp.RadarSpecifications[0])==0:
+        return [],[]
+    radarParameters = ssp.RadarSpecifications[0][0]
+    tx = np.array([[v.x,v.y,v.z] for v in radarParameters['global_location_TX_RX_Center'][0]])
+    rx = np.array([[v.x,v.y,v.z] for v in radarParameters['global_location_TX_RX_Center'][1]])
+    return tx,rx,wavelength(radarParameters)
 def RadarRawData():
     radarRawData = np.array([])
     radarParameters = []
@@ -65,6 +75,15 @@ def txrxplot(radarParameters):
     for txt in range(len(rx)):
         ax.text(rx[txt,0], rx[txt,1], rx[txt,2], f'RX{txt+1}', color='black')
     ax.scatter(rx[:,0], rx[:,1], rx[:,2], c='b', marker='o')
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')
+    ax.axis('equal')
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for itx in range(len(tx)):
+        for irx in range(len(rx)):
+            ax.scatter(tx[itx,0]+rx[irx,0], tx[itx,1]+rx[irx,1], tx[itx,2]+rx[irx,2], c='b', marker='o')
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')

@@ -216,8 +216,7 @@ def MIMOArrayOrder(radarParameters):
 def DOAProcessing(S_IF_khatrange_lhatdoppler_pva,radarParameters,plot=True,N_UpSampling=0):
     rangedopplerindex_axe, VA_axe = 0,1
     p2y,p2z,Ny,Nz=MIMOArrayOrder(radarParameters)
-        
-    S_IF_khatrange_lhatdoppler_yaz_zel = S_IF_khatrange_lhatdoppler_pva.reshape(-1,Ny,Nz)
+    S_IF_khatrange_lhatdoppler_yaz_zel = np.zeros_like(S_IF_khatrange_lhatdoppler_pva).reshape(-1,Ny,Nz)
     S_IF_khatrange_lhatdoppler_yaz_zel[:,p2y,p2z] = S_IF_khatrange_lhatdoppler_pva
     rangedopplerindex_axe , y_axe, z_axe = 0,1,2
     winY = np.hanning(S_IF_khatrange_lhatdoppler_yaz_zel.shape[y_axe])

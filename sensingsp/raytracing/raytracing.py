@@ -1308,12 +1308,23 @@ def tx2scatter_or_ris(path,Suite_Position,ScattersGeoV,HashFaceIndex_ScattersGeo
   # amp*=np.sqrt(Aeff)
 
 
+# def scatter_amp(distanceLP,SG,dir,amp):
+#   area = SG[3]
+#   normal = SG[4]
+#   RCS0 = SG[5]
+#   area*=np.abs(normal.dot(-dir))
+#   rcs = np.sqrt(area * RCS0)
+#   co = 1.0/ ( np.sqrt(4*np.pi) * distanceLP )
+#   amp*=np.sqrt(co*rcs)
+#   return amp
 def scatter_amp(distanceLP,SG,dir,amp):
   area = SG[3]
   normal = SG[4]
   RCS0 = SG[5]
+  SpecularDiffusionFactor = SG[8]
   area*=np.abs(normal.dot(-dir))
-  rcs = np.sqrt(area * RCS0)
+  area_SpecularDiffusionFactor = area ** SpecularDiffusionFactor
+  rcs = np.sqrt( area_SpecularDiffusionFactor * RCS0)
   co = 1.0/ ( np.sqrt(4*np.pi) * distanceLP )
   amp*=np.sqrt(co*rcs)
   return amp

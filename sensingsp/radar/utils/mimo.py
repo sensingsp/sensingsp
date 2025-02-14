@@ -6,7 +6,7 @@ import scipy.signal.windows as scipy_windows
 import math
 import numba
 import numpy as np
-
+# paper: caltech 2D + tx H MR. rx V MR. 
 def matlab_like_hadamard(n, classname='double'):
     """
     Generate a Hadamard matrix of order n.
@@ -707,3 +707,79 @@ def VAsignal2coArraySignal_1D_sum(virtual_array_Position, virtual_array_Signal):
     
     coArrayStructure = [coprime_struct,coprime_differences]
     return coArraySignal,coArrayStructure
+
+def VAsignal2coArraySignal_2D(virtual_array_Position, virtual_array_Signal=None, Option="Fwd_x"):
+    coArray = []
+    posPair = {}
+    num_positions = len(virtual_array_Position)
+    for i in range(num_positions):
+        for j in range(num_positions):
+            add = False
+            if Option == "Fwd_x":
+              if virtual_array_Position[i][0] - virtual_array_Position[j][0]>=0:
+                add=True
+            if Option == "Bcw_x":
+              if virtual_array_Position[i][0] - virtual_array_Position[j][0]<=0:
+                add=True
+            if Option == "FwdBcw_x":
+                add=True
+            if Option == "Fwd_xy":
+              if virtual_array_Position[i][0] - virtual_array_Position[j][0]>=0:
+                if virtual_array_Position[i][1] - virtual_array_Position[j][1]>=0:
+                  add=True
+              
+            if add:
+                difference = virtual_array_Position[i] - virtual_array_Position[j]
+                diff_tuple = tuple(difference.tolist())
+                
+                if diff_tuple not in coArray:
+                    coArray.append(diff_tuple)
+                    posPair[diff_tuple] = [(i, j,0)]
+                else:
+                    posPair[diff_tuple].append((i, j,0))
+                    
+    return None, coArray, posPair
+
+
+def MIMO_minimum_redundancy_array():
+  Tx = [0,1,3]
+  Rx = [0,6,13,40,60]
+
+def minimum_redundancy_array(N, array_type="restricted"):
+    restricted_arrays = {
+        1: [],
+        5: [1, 3, 3, 2],
+        6: [1, 5, 3, 2, 2],
+        7: [1, 3, 6, 2, 3, 2],
+        8: [1, 3, 6, 6, 2, 3, 2],
+        9: [1, 3, 6, 6, 6, 2, 3, 2],
+        10: [1, 2, 3, 7, 7, 7, 4, 4, 1],
+        11: [1, 2, 3, 7, 7, 7, 7, 4, 4, 1]
+    }
+
+    general_arrays = {
+        1: [],
+        2: [1],
+        3: [1, 2],
+        4: [1,3,2],
+        5: [4, 1, 2, 6],
+        6: [6, 1, 2, 2, 8],
+        7: [14, 1, 3, 6, 2, 5],
+        8: [8, 10, 1, 3, 2, 7, 8],
+        10: [16, 1,11, 8, 6, 4, 3,2, 22],
+        11: [18, 1,3, 9, 11, 6, 8, 2, 5, 28]
+    }
+
+    # Select the correct array dictionary
+    if array_type == "restricted":
+        selected_arrays = restricted_arrays
+    elif array_type == "general":
+        selected_arrays = general_arrays
+    else:
+        raise ValueError("Invalid array type. Choose 'restricted' or 'general'.")
+
+    # Return the array configuration for the given N
+    if N in selected_arrays:
+        return selected_arrays[N]
+    else:
+        raise ValueError(f"No array configuration found for N = {N}.")

@@ -32,6 +32,9 @@ class BlenderGeometry:
                     if "Backscatter Dev (deg)" not in obj:
                         obj["Backscatter Dev (deg)"] = 0.0
                     Backscatter_dev = obj["Backscatter Dev (deg)"]
+                    if "SpecularDiffusionFactor" not in obj:
+                        obj["SpecularDiffusionFactor"] = 1.0
+                    SpecularDiffusionFactor = obj["SpecularDiffusionFactor"]
                     bm = bmesh.new()
                     bm.from_object(obj, depsgraph)
                     bm.transform(obj.matrix_world)
@@ -41,7 +44,7 @@ class BlenderGeometry:
                         face_center = face.calc_center_median()
                         fn = obj.matrix_world.to_3x3() @ face.normal
                         fn.normalize()
-                        face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0,Backscatter_N,Backscatter_dev])
+                        face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0,Backscatter_N,Backscatter_dev,SpecularDiffusionFactor])
                         # print(face_center,face.normal,fn)
                         HashFaceIndex_ScattersGeo[obj_hash][face.index]=len(face_center_all)-1
                     bm.free()

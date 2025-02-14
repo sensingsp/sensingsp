@@ -1868,7 +1868,7 @@ def steeringvector(va,az):
     return s
      
 
-def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0, radial_velocity=0):
+def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0, radial_velocity=0,shape='cube'):
     """
     Adds a target cube in a Blender scene with specified parameters.
     The cube's location and orientation are adjusted based on azimuth, elevation, and reference radar.
@@ -1887,15 +1887,35 @@ def addTarget(refRadar=None, range=10, azimuth=0, elevation=0, RCS0=1, size=1.0,
     """
     # Create the cube representing the target
     # size /=2.0
-    bpy.ops.mesh.primitive_cube_add(
-        size=size,
-        align='WORLD',
-        location=(range + 0.5 * size, 0, 0),  # Temporary location
-        scale=(1, 1, 1)
-    )
+    if shape=='cube':
+        bpy.ops.mesh.primitive_cube_add(
+            size=size,
+            align='WORLD',
+            location=(range + 0.5 * size, 0, 0),  # Temporary location
+            scale=(1, 1, 1)
+        )
+    elif shape=='sphere':
+        bpy.ops.mesh.primitive_uv_sphere_add(
+            radius=size/2,
+            align='WORLD',
+            location=(range + 0.5 * size, 0, 0),  # Temporary location
+            scale=(1, 1, 1)
+        )
+    elif shape=='plane':
+        bpy.ops.mesh.primitive_plane_add(
+            size=size,
+            align='WORLD',
+            location=(range, 0, 0),  
+            scale=(1, 1, 1),
+            rotation=(0,np.pi/2,0)
+        )
+    else:
+        raise ValueError('shape should be cube or sphere')
     cube = bpy.context.object
     cube["RCS0"] = RCS0  # Store RCS value as a custom property
-    
+    cube["Backscatter N"] = 1  # Store RCS value as a custom property
+    cube["Backscatter Dev (deg)"] = 0.0  # Store RCS value as a custom property
+    cube["SpecularDiffusionFactor"] = 1.0  # Store RCS value as a custom property
     if np.abs(radial_velocity)> 0:
         T = 1.0/bpy.context.scene.render.fps
         start_frame = 1

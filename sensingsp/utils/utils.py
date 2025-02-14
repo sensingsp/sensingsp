@@ -12,7 +12,26 @@ import platform
 import time
 import matplotlib.pyplot as plt
 import cv2
+# def subdivide_object(obj, level=2):
+#     if obj is None:
+#         return
+#     modifier = obj.modifiers.new(name="Subdivision", type='SUBSURF')
+#     modifier.levels = level
+#     bpy.context.view_layer.objects.active = obj
+#     bpy.ops.object.modifier_apply(modifier="Subdivision")
+def subdivide_object(obj, level=2):
+    bpy.ops.object.mode_set(mode='OBJECT')
 
+    # Make the object active and enter edit mode
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    # Subdivide the object without smoothing
+    for _ in range(level):
+        bpy.ops.mesh.subdivide(smoothness=0)
+
+    # Return to object mode
+    bpy.ops.object.mode_set(mode='OBJECT')
 def initialize_environment():
    ssp.utils.delete_all_objects()
    ssp.utils.define_settings()
@@ -119,11 +138,21 @@ def pointCloud_RangeAzimuthElevation_THR(RangeAzimuthElevation=None,rangeResolut
   ax.set_ylim(mean_y - max_range, mean_y + max_range)
   ax.set_zlim(mean_z - max_range, mean_z + max_range)
   plt.show()
+  
+def azel2uv(azimuth, elevation):
+  if np.abs(azimuth) > np.pi/2:
+    return None
+  u = np.cos(elevation) * np.sin(azimuth)
+  v = np.sin(elevation)
+  return u, v
+
 def sph2cart(r, azimuth, elevation):
     x = r * np.cos(elevation) * np.cos(azimuth)
     y = r * np.cos(elevation) * np.sin(azimuth)
     z = r * np.sin(elevation)
     return x, y, z
+  
+  
 def cart2sph(x, y, z):
     radius = np.sqrt(x**2 + y**2 + z**2)  # Compute the radial distance
     azimuth = np.arctan2(y, x)            # Compute the azimuth angle

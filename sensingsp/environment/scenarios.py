@@ -14,17 +14,21 @@ def make_simple_scenario():
 def run_simple_chain():
     processing_1()
 def add_scenario(st):
-    if st=='Target RCS Simulation':
+    if st=='Target RCS Simulation' or st=='Target RCS Simulation Plane':
         ssp.utils.initialize_environment()
         rangeTarget = 20
         radar = ssp.radar.utils.addRadar(
             radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz,
             location_xyz=[-rangeTarget, 0, 0])
-
-        ssp.radar.utils.addTarget(
-            refRadar=radar,
-            range=rangeTarget-0.5)
-        NF = 360
+        if st=='Target RCS Simulation':
+            ssp.radar.utils.addTarget(
+                refRadar=radar,
+                range=rangeTarget-0.5)
+        else:
+            ssp.radar.utils.addTarget(
+                refRadar=radar,
+                range=rangeTarget,shape="plane")
+        NF = 3600
         radar.parent.rotation_euler  = (0,0,0)
         radar.parent.keyframe_insert(data_path="rotation_euler", frame=1)
         radar.parent.rotation_euler  = (0,0,2*np.pi)
@@ -144,8 +148,8 @@ def add_scenario(st):
         ssp.utils.define_settings()
         
         HL = ssp.LightSpeed/62e9/2
-        L = 138e-2 
-        Sec = HL
+        L = 13e-2 
+        Sec = HL/1
         N2 = int(L/Sec)
         Lx = 7.5e-3
         N2x = int(Lx/Sec)
@@ -175,13 +179,16 @@ def add_scenario(st):
                 if obj.type == 'MESH':
                     if obj.name.startswith('Probe_')==False:
                         if "RCS0" not in obj:
-                            obj["RCS0"] = 1.
+                            obj["RCS0"] = .1
                         RCS0 = obj["RCS0"]
                         if "Backscatter N" not in obj:
                             obj["Backscatter N"] = 1
                         Backscatter_N = obj["Backscatter N"]
                         if "Backscatter Dev (deg)" not in obj:
                             obj["Backscatter Dev (deg)"] = 0.0
+                        if "SpecularDiffusionFactor" not in obj:
+                            obj["SpecularDiffusionFactor"] = 2.
+                            
             
         
         ssp.integratedSensorSuite.define_suite(0, location=Vector((-1, 0, 0)), rotation=Vector((0, 0, 0)))
@@ -325,6 +332,9 @@ def sim_scenario(st):
         # return
         fig, axs = plt.subplots(1,2)
         axs[0].plot(-TX_theta0+theta_v[:len(o)],20*np.log10(o))
+        data={"o":o,'theta_v':theta_v,'TX_theta0':TX_theta0}
+        ssp.utils.savemat_in_tmpfolder('slots.mat',data)
+        ssp.utils.open_temp_folder()
         # plt.plot(-TX_theta0+theta_v[:len(o)],(o))
         om = np.max(20*np.log10(o))
         axs[0].set_ylim([om-35,om+5])   
@@ -339,7 +349,7 @@ def sim_scenario(st):
         axs[1].set_ylabel('Normalized Received Signal Power (dB)')
         plt.show()
     
-    if st=='Target RCS Simulation':
+    if st=='Target RCS Simulation' or st=='Target RCS Simulation Plane':
         ssp.utils.trimUserInputs() 
         ssp.config.restart()
         wavelength = ssp.utils.research.simplest.wavelength(ssp.RadarSpecifications[0][0])
@@ -358,7 +368,8 @@ def sim_scenario(st):
         # return
         o=np.array(o)
         plt.figure()
-        plt.plot(20*np.log10(o/np.max(o)))
+        # plt.plot(20*np.log10(o/np.max(o)))
+        plt.plot(360.0*np.arange(o.shape[0])/o.shape[0],20*np.log10(o))
         plt.grid()
         plt.xlabel('Angle (deg)')
         plt.ylabel('Received Signal Power (dB)')

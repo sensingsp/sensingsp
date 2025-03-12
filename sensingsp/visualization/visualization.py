@@ -10,9 +10,10 @@ import sensingsp as ssp
 def plot_tiangles(Triangles):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    x,y,z=[],[],[]   
+       
     for obj in Triangles:
         for triangle in obj:
+            x,y,z=[],[],[]
             x.append(triangle[0][0])
             x.append(triangle[1][0])
             x.append(triangle[2][0])
@@ -27,8 +28,9 @@ def plot_tiangles(Triangles):
             z.append(triangle[0][2])
             # if k>100:
             #     break
+            ax.plot(x,y,z,'-k')
         
-    ax.plot(x,y,z,'-')
+    
     
     return fig,ax
 

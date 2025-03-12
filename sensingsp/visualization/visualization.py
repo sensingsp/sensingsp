@@ -6,6 +6,50 @@ from mathutils import Vector
 # import matplotlib
 # matplotlib.use('qtagg')
 import sensingsp as ssp
+
+def plot_tiangles(Triangles):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    x,y,z=[],[],[]   
+    for obj in Triangles:
+        for triangle in obj:
+            x.append(triangle[0][0])
+            x.append(triangle[1][0])
+            x.append(triangle[2][0])
+            x.append(triangle[0][0])
+            y.append(triangle[0][1])
+            y.append(triangle[1][1])
+            y.append(triangle[2][1])
+            y.append(triangle[0][1])
+            z.append(triangle[0][2])
+            z.append(triangle[1][2])
+            z.append(triangle[2][2])
+            z.append(triangle[0][2])
+            # if k>100:
+            #     break
+        
+    ax.plot(x,y,z,'-')
+    
+    return fig,ax
+
+
+
+def visualize_scenario():
+  Triangles = ssp.utils.exportBlenderTriangles()
+  Suite_Position,ScattersGeo = ssp.utils.export_radar_positions()
+  fig,ax = plot_tiangles(Triangles)
+  for isuite,suite in enumerate(Suite_Position):
+    for iradar,radar in enumerate(suite['Radar']):
+      for itx,tx in enumerate(radar['TX-Position']):
+        ax.scatter(tx[0],tx[1],tx[2],c='r',marker='x')
+      for irx,rx in enumerate(radar['RX-Position']):
+          ax.scatter(rx[0],rx[1],rx[2],c='b',marker='x')
+  
+  ax.set_aspect('equal', 'box')
+  plt.show()
+  
+  
+
 def visualizeProcessingOutputs(ProcessingOutputs):
   
   grid_points , grid_velocities , all_outputs = ProcessingOutputs

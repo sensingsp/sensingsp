@@ -2,6 +2,7 @@ import bpy
 import numpy as np
 from mathutils import Vector, Euler
 import bmesh
+import sensingsp as ssp
 def cart2sph(x, y, z):
     hxy = np.hypot(x, y)
     r = np.hypot(hxy, z)
@@ -137,7 +138,9 @@ class BlenderGeometry:
                                           'PatternType':PatternType,'PatternMaxGain':PatternMaxGain,
                                           'PatternAzimuthBeamWidth':PatternAzimuthBeamWidth,'PatternElevationBeamWidth':PatternElevationBeamWidth,
                                           'WaveLength':WaveLength})
-
+            if ssp.config.myglobal_outsidedefined_RIS is not None:
+                suite_info['RIS'] = ssp.config.myglobal_outsidedefined_RIS
+                 
             suite_info['Probe'] = []
 
             # print(suite['Probe'])

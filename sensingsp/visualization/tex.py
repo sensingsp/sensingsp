@@ -176,7 +176,7 @@ def pdfH1():
 
 def pdfH0():
     return (
-        r"p(\mathbf{x}, \mathbf{x}_1, \mathbf{x}_2, \hdots, \mathbf{x}_D | \mathcal{H}_1)=\frac{1}{\sigma |\mathbf{M}|^{D+1}}e^{-\mathrm{Tr}(\mathbf{M}^{-1}(\mathbf{x}\mathbf{x}^H + \mathbf{\Sigma}))}}"
+        r"p(\mathbf{x}, \mathbf{x}_1, \mathbf{x}_2, \hdots, \mathbf{x}_D | \mathcal{H}_0)=\frac{1}{\sigma |\mathbf{M}|^{D+1}}e^{-\mathrm{Tr}(\mathbf{M}^{-1}(\mathbf{x}\mathbf{x}^H + \mathbf{\Sigma}))}}"
     )
 
 def Sigma():

@@ -19,6 +19,19 @@ import cv2
 #     modifier.levels = level
 #     bpy.context.view_layer.objects.active = obj
 #     bpy.ops.object.modifier_apply(modifier="Subdivision")
+def export_radar_positions():
+    bpy.context.scene.frame_set(ssp.config.CurrentFrame)
+    bpy.context.view_layer.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    geocalculator = ssp.raytracing.BlenderGeometry()
+    rayTracingFunctions = ssp.raytracing.RayTracingFunctions()
+    suite_information = BlenderSuiteFinder().find_suite_information()
+    blender_frame_Jump_for_Velocity = 1
+    Suite_Position,ScattersGeo,HashFaceIndex_ScattersGeo,ScattersGeoV = geocalculator.get_Position_Velocity(bpy.context.scene, suite_information, ssp.config.CurrentFrame, blender_frame_Jump_for_Velocity)
+    return Suite_Position,ScattersGeo
+    
+
+
 def subdivide_object(obj, level=2):
     bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -615,7 +628,8 @@ def renderBlenderTriangles(Triangles):
     plt.close()
     img = plt.imread(output_path)
     return img
-    
+  
+  
 def exportBlenderTriangles():
   frame = ssp.config.CurrentFrame
   out = []

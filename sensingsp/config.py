@@ -97,6 +97,7 @@ class Config():
                 ('Advanced Intense RayTracing', "Advanced Intense RayTracing", "Advanced Intense RayTracing"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
+        self.myglobal_outsidedefined_RIS = []
         self.appSTYLESHEET = """
             /* General */
             QWidget {

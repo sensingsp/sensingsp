@@ -920,21 +920,63 @@ def set_axes_equal(ax):
     ax.set_zlim3d([z_middle - max_range / 2, z_middle + max_range / 2])
 
 
-def exportBlenderPolygons():
-   out=[]
-   for obj in bpy.context.scene.objects:
-      if obj.type == 'MESH':
-        mesh = obj.data
+def exportBlenderPolygons(frame=1):
+    """
+    Export all mesh polygons in the Blender scene at a specific frame,
+    returning their world-space vertex coordinates.
+
+    Args:
+        frame (int): The frame number to evaluate the scene at.
+
+    Returns:
+        List[List[List[float]]]: A list of mesh objects, each containing
+                                 a list of polygons, each containing
+                                 a list of 3D coordinates [x, y, z].
+    """
+    # Set the scene to the desired frame
+    bpy.context.scene.frame_set(frame)
+    
+    all_meshes = []
+    
+    for obj in bpy.context.scene.objects:
+        if obj.type != 'MESH':
+            continue
+        
+        mesh = obj.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh()
         world_matrix = obj.matrix_world
-        p = []
+        polygons = []
+
         for poly in mesh.polygons:
-            points=[]
-            for vidx in poly.vertices:
-                local_co = mesh.vertices[vidx].co
-                world_co = world_matrix @ local_co
-                points.append([world_co.x,world_co.y,world_co.z])
-            p.append(points)
-        out.append(p)
-   return out
+            world_coords = [
+                list(world_matrix @ mesh.vertices[vidx].co)
+                for vidx in poly.vertices
+            ]
+            polygons.append(world_coords)
+
+        all_meshes.append(polygons)
+
+        # Important: free memory
+        obj.to_mesh_clear()
+    
+    return all_meshes
 
 
+
+
+# def exportBlenderTriangles():
+#   frame = ssp.config.CurrentFrame
+#   out = []
+#   bpy.context.scene.frame_set(frame)
+#   bpy.context.view_layer.update()
+#   for obj in bpy.context.scene.objects:
+#     if obj.type == 'MESH':
+#       depgraph = bpy.context.evaluated_depsgraph_get()
+#       bm = bmesh.new()
+#       bm.verts.ensure_lookup_table()
+#       bm.from_object(obj, depgraph)
+#       bm.transform(obj.matrix_world)
+#       mesh = bpy.data.meshes.new('new_mesh')
+#       bm.to_mesh(mesh)
+#       trianglesList=mesh2triangles(mesh)
+#       out.append(trianglesList)
+#   return out

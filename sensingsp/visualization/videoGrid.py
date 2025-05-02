@@ -87,6 +87,60 @@ def create_grid_video(video_count, NW, NH, video_directory,fps=30, output_filena
         video.release()
     out.release()
 
+def combine_videos(video_files, output_filename="combined_video.avi", output_fps=None, output_resolution=None):
+    """
+    Combine a list of video files (mp4, avi, etc.) into a single video.
+    
+    Parameters:
+        video_files (list): List of paths to video files.
+        output_filename (str): Filename for the combined output video.
+        output_fps (float, optional): Desired frames per second. If None, uses the fps of the first video.
+        output_resolution (tuple, optional): Desired output resolution (width, height). 
+                                             If None, uses the resolution of the first video.
+    """
+    if not video_files:
+        print("No video files provided.")
+        return
+
+    # Open the first video to set default fps and resolution if needed.
+    cap0 = cv2.VideoCapture(video_files[0])
+    if not cap0.isOpened():
+        print(f"Error opening video file: {video_files[0]}")
+        return
+
+    # Determine output fps and resolution using the first video if not provided.
+    fps = output_fps if output_fps is not None else cap0.get(cv2.CAP_PROP_FPS)
+    width = int(cap0.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap0.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    resolution = output_resolution if output_resolution is not None else (width, height)
+    cap0.release()
+
+    # Define the codec and create VideoWriter object.
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    out = cv2.VideoWriter(output_filename, fourcc, fps, resolution)
+
+    # Loop over each video file.
+    for file in video_files:
+        cap = cv2.VideoCapture(file)
+        if not cap.isOpened():
+            print(f"Error opening video file: {file}. Skipping this file.")
+            continue
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            # Resize frame if its resolution differs from the desired output.
+            if (frame.shape[1], frame.shape[0]) != resolution:
+                frame = cv2.resize(frame, resolution)
+            out.write(frame)
+        cap.release()
+
+    out.release()
+    print(f"Combined video saved as: {output_filename}")
+
+
+
 def addframe_GridVideoWriters(images,videos_WH,videos):
   for i_image,image in enumerate(images):
     image = cv2.resize(image, (videos_WH[i_image][1], videos_WH[i_image][0]))
@@ -103,7 +157,12 @@ def firsttime_init_GridVideoWriters(images,video_directory,fps):
     videos.append(cv2.VideoWriter(f"{video_directory}/radar_video_{i_image+1}.avi", cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_width, frame_height)))
   return videos,videos_WH  
 
+# def captureFig(fig):
+#   fig.canvas.draw()
+#   image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
+#   return image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
 def captureFig(fig):
-  fig.canvas.draw()
-  image = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-  return image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    fig.canvas.draw()
+    image = np.frombuffer(fig.canvas.buffer_rgba(), dtype='uint8')
+    return image.reshape(fig.canvas.get_width_height()[::-1] + (4,))

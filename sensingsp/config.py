@@ -42,6 +42,7 @@ class Config():
         self.Detection_Parameters_gridlen=.1
         self.DopplerProcessingMethod_FFT_Winv = 1
         self.EpsilonDistanceforHitTest = 10e-6 
+        self.useEpsilonDistanceforHitTest = False 
         self.RayTracing_ReflectionPointEpsilon=1e-4
         self.ax = None
         # self.suite_information_finder = self.environment.BlenderSuiteFinder()
@@ -84,6 +85,7 @@ class Config():
                 ('2 Slot as RIS', "2 Slot as RIS", "2 Slot as RIS"),
                 ('Target RCS Simulation', "Target RCS Simulation", "Target RCS Simulation"),
                 ('Target RCS Simulation Plane', "Target RCS Simulation Plane", "Target RCS Simulation Plane"),
+                ('Wifi Sensing', "Wifi Sensing", "Wifi Sensing"),
             ]
         self.extratypes =[
                 ('Environment Meshes', "Environment Meshes", "Environment Meshes"),

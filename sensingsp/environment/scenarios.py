@@ -41,6 +41,8 @@ def add_scenario(st):
 
     if st=='2 Cubes + 6843':
         predefine_movingcube_6843()
+    if st=='Wifi Sensing':
+        predefine_wifi_sensing()
     if st == 'Pattern SISO':
         predefine_Pattern_SISO()
         
@@ -123,7 +125,8 @@ def add_scenario(st):
         
         
         ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-        radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+        # radar = ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+        radar = ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
     if st == '2 Slot Example' or st == '2 Slot as RIS':
         TX_theta0 = -20.
         RX_theta0 = 15.
@@ -295,7 +298,8 @@ def sim_scenario(st):
     
     if st == 'Ray Tracing 1' or st == 'Ray Tracing 2' or st == 'Ray Tracing 3' :
         ssp.environment.scenarios.raytracing_test()    
-    
+    if st == 'Wifi Sensing':
+        ssp.environment.scenarios.wifi_sensing()
     if st == "Hand Gesture + 3 Xethru Nature paper":
         process_predefine_Hand_Gesture_3Xethru_Nature_paper()
     if st == '2 Slot Example' or st == '2 Slot as RIS':
@@ -375,7 +379,49 @@ def sim_scenario(st):
         plt.ylabel('Received Signal Power (dB)')
         plt.show()
     
+def predefine_wifi_sensing():
+    ssp.utils.initialize_environment()
+    if 0:
+        stl_path = "C:/Users/moein.ahmadi/OneDrive - University of Luxembourg/SensingSP/sensingsp-main/conferenceroom.stl"
+        if os.path.exists(stl_path):
+            bpy.ops.import_mesh.stl(filepath=stl_path)
+    else:
+        blend_path = os.path.join(ssp.config.temp_folder, "WifiSensing-2.blend")
+        if os.path.exists(blend_path):
+            ssp.environment.add_blenderfileobjects(blend_path)
+            ssp.utils.define_settings()
         
+    radar = ssp.radar.utils.addRadar(
+        radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz,
+        location_xyz=[0, 0, 0])
+    radar.rotation_euler = [0, 0, 0]
+    obj = bpy.data.objects.get("TX_0_0_1_0_00001")
+    if obj:
+        obj.location = (-1.46, -1.42, 2.1)  # Replace x, y, z with the desired coordinates
+        obj.scale = (.02, .02, .02)       
+        # obj.rotation_euler = (0, np.pi*3/4, 0)
+    obj = bpy.data.objects.get("RX_0_0_1_0_00001")
+    if obj:
+        obj.location = (.3, .3, .85)  # Replace x, y, z with the desired coordinates
+        obj.scale = (.1, .1, .1)       
+        obj.rotation_euler = (0, np.pi/2, 0)    
+    
+    
+    
+    configurations = [
+        ssp.radar.utils.RadarSignalGenerationConfigurations.Spillover_Disabled,
+        ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Balanced,
+        ssp.radar.utils.RadarSignalGenerationConfigurations.CUDA_Disabled
+    ]
+    
+    endframe = 2
+    ssp.utils.initialize_simulation(endframe=endframe)
+    ssp.utils.set_configurations(configurations)
+    ssp.utils.set_RayTracing_advanced_intense()
+    ssp.utils.set_raytracing_bounce(2)
+    radar['Fs_MHz'] = 20e6
+    ssp.config.directReceivefromTX =  True
+
 def predefine_movingcube_6843(interpolation_type='LINEAR'):
     #     Blender provides several interpolation types, and as of recent versions, there are 6 main interpolation options:
 
@@ -643,7 +689,48 @@ def radar_path_d_drate_amp(path_d_drate_amp,FigsAxes):
 def rcxchain(st):
     if st=="Hand Gestures":
         1
-
+def wifi_sensing():
+    ssp.utils.trimUserInputs() 
+    ssp.config.restart()  
+    obj_name = 'RadarPlane_0_0_0'
+    if obj_name in bpy.data.objects:
+        radar = bpy.data.objects[obj_name]
+    else:
+        return
+    while ssp.config.run():
+        path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        d_drate_amp=path_d_drate_amp[0][0][0][0][0][0]
+        paths = []
+        c = 3e8
+        for d, d_rate, amp,_ in d_drate_amp:
+            paths.append({'delay': d/c, 'gain': amp})
+        plt.plot([1e9*p['delay'] for p in paths], [p['gain'] for p in paths], 'o')
+        plt.xlabel('Delay (ns)')
+        plt.ylabel('Gain')
+        plt.show()
+        bw_mhz=radar['Fs_MHz']/1e6
+        M=4
+        use_sgi=False
+        Fs=radar['Fs_MHz']
+        tx_bits = np.random.randint(0, 2, 48)  # for one OFDM symbol
+        # build CIR
+        h = ssp.utils.research.algorithms.WifiSensing.build_cir(paths, Fs)
+        plt.plot(np.abs(h), 'o')
+        plt.xlabel('Sample index')  
+        plt.ylabel('Magnitude')
+        plt.title(f'CIR Magnitude for Fs = {Fs} Samples/s')
+        plt.show()
+        # OFDM modulate
+        ofdm = ssp.utils.research.algorithms.WifiSensing.ofdm_modulate(tx_bits, bw_mhz, M, use_sgi)
+        # pass through channel
+        rx = ssp.utils.research.algorithms.WifiSensing.fftconvolve(ofdm, h)[:len(ofdm)]
+        # add noise
+        noise = (np.random.randn(*rx.shape)+1j*np.random.randn(*rx.shape)) * 1e-3
+        rx += noise
+        # estimate CSI
+        csi = ssp.utils.research.algorithms.WifiSensing.estimate_csi(rx, bw_mhz, use_sgi)
+            
+        ssp.utils.increaseCurrentFrame()
 def raytracing_test():
     ssp.utils.trimUserInputs() 
     ssp.config.restart()
@@ -1270,3 +1357,116 @@ def raytracing_rays():
         break
     return o
 
+
+
+
+def generate_chest_vibration_target(respiration_angle_amplitude=30,
+                                    bone_lengths=(0.07, 0.035, 0.035),
+                                    chest_dimensions=(0.175, 0.14, 1),
+                                    subdivisions=10,
+                                    respiration_cycles=8,
+                                    respiration_period=15):
+    """
+    Generate an oscillating chest model suitable for simulating radar targets in vital sign monitoring.
+
+    Parameters:
+    - respiration_angle_amplitude: Maximum rotation angle in degrees for simulating chest expansion/contraction.
+    - bone_lengths: Tuple containing lengths of the three segments of the armature bones.
+    - chest_dimensions: Tuple containing the scale of the chest (width, height, depth).
+    - subdivisions: Number of subdivisions for chest surface mesh.
+    - respiration_cycles: Number of respiration cycles to simulate.
+    - respiration_period: Number of frames per half-cycle of respiration.
+    """
+
+    # Create armature (bones structure)
+    bpy.ops.object.armature_add(enter_editmode=True, location=(0, 0, 0), radius=bone_lengths[0])
+    armature = bpy.context.object
+    armature.name = "sspDeformArmature"
+
+    # Extrude second bone
+    bpy.ops.armature.extrude_move(TRANSFORM_OT_translate={"value": (0, 0, bone_lengths[1])})
+    # Extrude third bone
+    bpy.ops.armature.extrude_move(TRANSFORM_OT_translate={"value": (0, 0, bone_lengths[2])})
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Create chest surface (plane) and subdivide
+    bpy.ops.mesh.primitive_plane_add(
+        align='WORLD',
+        location=(0, -0.01, 0),
+        rotation=(0, np.pi/2, np.pi/2)
+    )
+    chest_skin = bpy.context.object
+    chest_skin.scale = chest_dimensions
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.subdivide(number_cuts=subdivisions)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # return
+    # Parent chest surface to armature with automatic weights
+    bpy.ops.object.select_all(action='DESELECT')
+    chest_skin.select_set(True)
+    armature.select_set(True)
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+    bpy.ops.object.select_all(action='DESELECT')
+
+    # Animate bone movements to simulate respiration
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='POSE')
+
+    pose_bone_upper = bpy.context.object.pose.bones[1]
+    pose_bone_lower = bpy.context.object.pose.bones[2]
+
+    pose_bone_upper.rotation_mode = 'XYZ'
+    pose_bone_lower.rotation_mode = 'XYZ'
+
+    for cycle in range(respiration_cycles):
+        # Set initial keyframe (chest expanded)
+        bpy.context.scene.frame_set(1 + cycle * respiration_period * 2)
+        pose_bone_upper.rotation_euler = (np.radians(respiration_angle_amplitude), 0.0, 0.0)
+        pose_bone_lower.rotation_euler = (np.radians(-respiration_angle_amplitude), 0.0, 0.0)
+        pose_bone_upper.keyframe_insert(data_path="rotation_euler")
+        pose_bone_lower.keyframe_insert(data_path="rotation_euler")
+
+        # Set mid-cycle keyframe (chest contracted)
+        bpy.context.scene.frame_set(respiration_period + cycle * respiration_period * 2)
+        pose_bone_upper.rotation_euler = (np.radians(-respiration_angle_amplitude), 0.0, 0.0)
+        pose_bone_lower.rotation_euler = (np.radians(respiration_angle_amplitude), 0.0, 0.0)
+        pose_bone_upper.keyframe_insert(data_path="rotation_euler")
+        pose_bone_lower.keyframe_insert(data_path="rotation_euler")
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return chest_skin
+
+def generate_chest_vibration_target_simple(respiration_distance_mm=5,
+                                    chest_dimensions=(0.175, 0.14, 1),
+                                    respiration_cycles=8,
+                                    respiration_period=15):
+    bpy.ops.mesh.primitive_plane_add(
+        align='WORLD',
+        location=(0, -0.01, 0),
+        rotation=(0, np.pi/2, np.pi/2)
+    )
+    chest_skin = bpy.context.object
+    chest_skin.scale = chest_dimensions
+
+    # bpy.ops.object.mode_set(mode='EDIT')
+    # bpy.ops.mesh.subdivide(number_cuts=subdivisions)
+    # bpy.ops.object.mode_set(mode='OBJECT')
+    # return
+    # Parent chest surface to armature with automatic weights
+    
+    # Animate bone movements to simulate respiration
+    
+    for cycle in range(respiration_cycles):
+        # Set initial keyframe (chest expanded)
+        bpy.context.scene.frame_set(1 + cycle * respiration_period * 2)
+        chest_skin.location = (0, respiration_distance_mm/1000,0)
+        chest_skin.keyframe_insert(data_path="location")
+        # Set mid-cycle keyframe (chest contracted)
+        bpy.context.scene.frame_set(respiration_period + cycle * respiration_period * 2)
+        chest_skin.location = (0, -respiration_distance_mm/1000,0)
+        chest_skin.keyframe_insert(data_path="location")
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return chest_skin

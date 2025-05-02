@@ -118,6 +118,12 @@ class RayTracingFunctions:
           # return False  # An object is blocking the line of sight
       return True  # No object is blocking the line of sight
 
+  def check_line_of_sight_checkID(self,start_point, end_point_hash, depsgraph):
+      direction = (end_point_hash[0] - start_point).normalized()
+      result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, start_point, direction)
+      if result and hash(hit_obj) == end_point_hash[1] and face_index == end_point_hash[2]:
+        return True
+      return False
   def check_line_of_sight_ID(self,start_point, end_point_hash, depsgraph,epsilon = 1e-4):
       direction = (end_point_hash[0] - start_point).normalized()
       result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, start_point, direction)

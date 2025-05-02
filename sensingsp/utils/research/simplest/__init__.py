@@ -23,9 +23,9 @@ def RayTracing():
 def tx_rx_Location():
     ssp.utils.trimUserInputs()
     if len(ssp.RadarSpecifications)==0:
-        return [],[]
+        return [],[],[]
     if len(ssp.RadarSpecifications[0])==0:
-        return [],[]
+        return [],[],[]
     radarParameters = ssp.RadarSpecifications[0][0]
     tx = np.array([[v.x,v.y,v.z] for v in radarParameters['global_location_TX_RX_Center'][0]])
     rx = np.array([[v.x,v.y,v.z] for v in radarParameters['global_location_TX_RX_Center'][1]])

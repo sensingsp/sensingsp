@@ -573,8 +573,10 @@ def run():
             cent/=len(rad)
             LOS_target = []
             for target in ScattersGeo:
-              if rayTracingFunctions.check_line_of_sight(cent, target[0], depsgraph):
+              if rayTracingFunctions.check_line_of_sight_checkID(cent, target, depsgraph):
                 LOS_target.append(target)
+              # if rayTracingFunctions.check_line_of_sight(cent, target[0], depsgraph):
+              #   LOS_target.append(target)
             for itx in range(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position'])):
               for target in LOS_target: #face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0])
                 for irx in range(len(Suite_Position[isuite]['Radar'][iradar]['RX-Position'])):
@@ -733,8 +735,10 @@ def Path_RayTracing_frame(progressbar=[]):
             cent/=len(rad)
             LOS_target = []
             for target in ScattersGeo:
-              if rayTracingFunctions.check_line_of_sight(cent, target[0], depsgraph):
+              if rayTracingFunctions.check_line_of_sight_checkID(cent, target, depsgraph):
                 LOS_target.append(target)
+              # if rayTracingFunctions.check_line_of_sight(cent, target[0], depsgraph):
+              #   LOS_target.append(target)
             for itx in range(len(Suite_Position[isuite]['Radar'][iradar]['TX-Position'])):
               for target in LOS_target: #face_center_all.append([face_center,obj_hash,face.index,face.calc_area(),fn,RCS0])
                 for irx in range(len(Suite_Position[isuite]['Radar'][iradar]['RX-Position'])):

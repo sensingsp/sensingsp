@@ -88,6 +88,7 @@ class Config():
                 ('Wifi Sensing', "Wifi Sensing", "Wifi Sensing"),
             ]
         self.extratypes =[
+                ('Surface Materials', "Surface Materials", "Surface Materials"),
                 ('Environment Meshes', "Environment Meshes", "Environment Meshes"),
                 ('Ray Tracing Simulation', "Ray Tracing Simulation", "Ray Tracing Simulation"),
                 ('CSI Simulation', "CSI Simulation", "CSI Simulation"),
@@ -97,6 +98,7 @@ class Config():
                 ('Light RayTracing', "Light RayTracing", "Light RayTracing"),
                 ('Balanced RayTracing', "Balanced RayTracing", "Balanced RayTracing"),
                 ('Advanced Intense RayTracing', "Advanced Intense RayTracing", "Advanced Intense RayTracing"),
+                ('Wifi Sensing Settings', "Wifi Sensing Settings", "Wifi Sensing Settings"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
         self.myglobal_outsidedefined_RIS = []

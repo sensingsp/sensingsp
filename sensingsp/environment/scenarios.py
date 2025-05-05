@@ -381,12 +381,9 @@ def sim_scenario(st):
     
 def predefine_wifi_sensing():
     ssp.utils.initialize_environment()
-    if 0:
-        stl_path = "C:/Users/moein.ahmadi/OneDrive - University of Luxembourg/SensingSP/sensingsp-main/conferenceroom.stl"
-        if os.path.exists(stl_path):
-            bpy.ops.import_mesh.stl(filepath=stl_path)
-    else:
-        blend_path = os.path.join(ssp.config.temp_folder, "WifiSensing-2.blend")
+    if "Wifi Sensing Settings" in bpy.data.objects:
+        ws_axes = bpy.data.objects['Wifi Sensing Settings']
+        blend_path = ws_axes["Load environment"] 
         if os.path.exists(blend_path):
             ssp.environment.add_blenderfileobjects(blend_path)
             ssp.utils.define_settings()
@@ -697,6 +694,34 @@ def wifi_sensing():
         radar = bpy.data.objects[obj_name]
     else:
         return
+    
+    if not("Wifi Sensing Settings" in bpy.data.objects):
+        return
+    ws_axes = bpy.data.objects['Wifi Sensing Settings']
+    # ws_axes["Sampling Frequency (MHz)"]    = 80.0    # Fs = 80 MHz
+    # ws_axes["Channel Bandwidth (MHz)"]     = 80.0    # VHT80
+    # ws_axes["FFT Size"]                    = 256     # NFFT
+    # ws_axes["Guard Interval (µs)"]         = 0.4     # short GI
+    # ws_axes["Modulation Order"]            = 16      # 16-QAM
+    # ws_axes["MCS Index"]                   = 7       # highest VHT MCS for 1 SS
+    # ws_axes["Carrier Frequency (GHz)"]     = 5.8     # 5.8 GHz center
+    # ws_axes["Noise Std (linear)"]          = 1e-3    # AWGN sigma
+    # ws_axes["Output mat file"]          =   "wifi_sensing_output.mat"
+
+    bw_mhz    = ws_axes["Channel Bandwidth (MHz)"]
+    Fs        = ws_axes["Sampling Frequency (MHz)"] * 1e6
+    M         = int(ws_axes["Modulation Order"])
+    use_sgi   = (ws_axes["Guard Interval (µs)"] == 0.4)
+    noise_std = float(ws_axes["Noise Std (linear)"])
+    ML = ws_axes["Random TX bit length"]
+    if ML > 0:
+        tx_bits = np.random.randint(0, 2, ML)
+    else:
+            # Deterministic TX message fallback
+        msg_str = str(ws_axes["Deterministic TX message"])
+        # Convert string to bits (UTF-8 bytes → bits)
+        msg_bytes = msg_str.encode('utf-8')
+        tx_bits = np.unpackbits(np.frombuffer(msg_bytes, dtype=np.uint8))
     while ssp.config.run():
         path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
         d_drate_amp=path_d_drate_amp[0][0][0][0][0][0]
@@ -708,11 +733,7 @@ def wifi_sensing():
         plt.xlabel('Delay (ns)')
         plt.ylabel('Gain')
         plt.show()
-        bw_mhz=radar['Fs_MHz']/1e6
-        M=4
-        use_sgi=False
-        Fs=radar['Fs_MHz']
-        tx_bits = np.random.randint(0, 2, 48)  # for one OFDM symbol
+        # tx_bits = np.random.randint(0, 2, ML)  # for one OFDM symbol
         # build CIR
         h = ssp.utils.research.algorithms.WifiSensing.build_cir(paths, Fs)
         plt.plot(np.abs(h), 'o')
@@ -725,11 +746,37 @@ def wifi_sensing():
         # pass through channel
         rx = ssp.utils.research.algorithms.WifiSensing.fftconvolve(ofdm, h)[:len(ofdm)]
         # add noise
-        noise = (np.random.randn(*rx.shape)+1j*np.random.randn(*rx.shape)) * 1e-3
+        noise = (np.random.randn(*rx.shape)+1j*np.random.randn(*rx.shape)) * noise_std 
         rx += noise
         # estimate CSI
         csi = ssp.utils.research.algorithms.WifiSensing.estimate_csi(rx, bw_mhz, use_sgi)
-            
+        plt.figure()
+        plt.plot(np.abs(csi), marker='o')
+        plt.xlabel('Subcarrier Index')
+        plt.ylabel('CSI Amplitude')
+        plt.title('CSI Amplitude per Subcarrier')
+        plt.grid(True)
+        plt.show()
+        phase = np.angle(csi)
+        plt.figure()
+        plt.plot(phase, marker='o')
+        plt.xlabel('Subcarrier Index')
+        plt.ylabel('CSI Phase (radians)')
+        plt.title('CSI Phase per Subcarrier')
+        plt.grid(True)
+        plt.show()
+        matfile = os.path.join(ssp.config.temp_folder,f'Frame_{ssp.config.CurrentFrame}_{ws_axes["Output mat file"]}')
+        savemat(matfile, {
+            'frame': ssp.config.CurrentFrame,
+            'csi': csi,                       # complex array
+            'cir': h,                         # complex CIR vector
+            'tx_bits': tx_bits,              # original transmitted bits
+            'Fs': Fs,                        # sampling rate in Hz
+            'bandwidth_MHz': bw_mhz,
+            'modulation_order': M,
+            'use_sgi': use_sgi,
+            'paths': [(p['delay'], p['gain']) for p in paths]  # delay/gain as list of tuples
+        })
         ssp.utils.increaseCurrentFrame()
 def raytracing_test():
     ssp.utils.trimUserInputs() 

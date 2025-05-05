@@ -235,6 +235,9 @@ def delete_all_objects():
             obj.select_set(True)
     if "Simulation Settings" in bpy.data.objects:
       bpy.data.objects["Simulation Settings"].select_set(False)
+    if "Wifi Sensing Settings" in bpy.data.objects:
+      bpy.data.objects["Wifi Sensing Settings"].select_set(False)
+      
     bpy.ops.object.delete()
 def save_Blender(folder="",file="save_frompython.blend"):
   if folder == "":

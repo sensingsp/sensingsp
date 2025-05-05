@@ -114,7 +114,7 @@ def ofdm_modulate(bits, bw_mhz=20, M=4, use_sgi=False):
     X = np.zeros(nfft, dtype=complex)
     # pilot symbols: all +1
     X[pilot_idx] = 1+0j
-    X[data_idx[:len(symbols)]] = symbols
+    X[data_idx[:min(len(symbols),data_idx.shape[0])]] = symbols[:min(len(symbols),data_idx.shape[0])]
     # IFFT
     x_time = np.fft.ifft(X)
     # add cyclic prefix

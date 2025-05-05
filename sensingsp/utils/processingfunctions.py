@@ -210,3 +210,36 @@ def extrafunctions(st):
         ssp.utils.set_RayTracing_balanced()
     if st == "Advanced Intense RayTracing":
         ssp.utils.set_RayTracing_advanced_intense()
+    if st == "Surface Materials":
+        for obj in bpy.context.scene.objects:
+            if obj.type == 'MESH':
+                if obj.name.startswith('Probe_')==False:
+                    if "RCS0" not in obj:
+                        obj["RCS0"] = .1
+                    RCS0 = obj["RCS0"]
+                    if "Backscatter N" not in obj:
+                        obj["Backscatter N"] = 1
+                    Backscatter_N = obj["Backscatter N"]
+                    if "Backscatter Dev (deg)" not in obj:
+                        obj["Backscatter Dev (deg)"] = 0.0
+                    if "SpecularDiffusionFactor" not in obj:
+                        obj["SpecularDiffusionFactor"] = 2.
+    if st == "Wifi Sensing Settings":
+        if not("Wifi Sensing Settings" in bpy.data.objects):
+            import os
+            bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+            ws_axes = bpy.context.object
+            ws_axes.name = f'Wifi Sensing Settings'
+            # --- Simulation Settings ---
+            ws_axes["Sampling Frequency (MHz)"]    = 80.0    # Fs = 80 MHz
+            ws_axes["Channel Bandwidth (MHz)"]     = 80.0    # VHT80
+            ws_axes["FFT Size"]                    = 256     # NFFT
+            ws_axes["Guard Interval (µs)"]         = 0.4     # short GI
+            ws_axes["Modulation Order"]            = 16      # 16-QAM
+            ws_axes["MCS Index"]                   = 7       # highest VHT MCS for 1 SS
+            ws_axes["Carrier Frequency (GHz)"]     = 5.8     # 5.8 GHz center
+            ws_axes["Noise Std (linear)"]          = 1e-3    # AWGN sigma
+            ws_axes["Output mat file"]          =   "wifi_sensing_output.mat"
+            ws_axes["Load environment"]          =   os.path.join(ssp.config.temp_folder, "WifiSensing-2.blend")
+            ws_axes["Random TX bit length"]      = 100
+            ws_axes["Deterministic TX message"] = "SensingSP™ is an open-source library for simulating sensing systems with signal processing and ML tools. Install with: pip install sensingsp"

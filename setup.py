@@ -26,7 +26,7 @@ install_requires = [
 # Define the setup
 setup(
     name='sensingsp',
-    version='1.5.0',
+    version='1.5.3',
     packages=find_packages(),
     install_requires=install_requires,
     url='https://sensingsp.github.io/',

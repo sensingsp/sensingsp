@@ -256,6 +256,30 @@ def add_scenario(st):
             ssp.environment.add_blenderfileobjects(os.path.join(folder, file),RCS0=1)
             
         ssp.utils.save_Blender()              
+    if st == 'Ray Tracing Refraction':
+        ssp.utils.delete_all_objects()
+        ssp.utils.define_settings()
+        cube = ssp.environment.add_cube(location=Vector((1.5, -.5, 0)), direction=Vector((1, 0, 0)), scale=Vector((.5, .5, .05)), subdivision=0)
+        cube = ssp.environment.add_cube(location=Vector((2.5, 1.5, 0)), direction=Vector((1, 0, 0)), scale=Vector((.5, .5, .05)), subdivision=0)
+        cube = ssp.environment.add_cube(location=Vector((4.5, 0.5, 0)), direction=Vector((1, 0, 0)), scale=Vector((.5, 1.5, .5)), subdivision=0)
+        cube = ssp.environment.add_cube(location=Vector((2.5, -1.5, 0)), direction=Vector((0, 1, 0)), scale=Vector((.5, .5, .05)), subdivision=0)
+        
+        for obj in bpy.context.scene.objects:
+            if obj.type == 'MESH':
+                if obj.name.startswith('Probe_')==False:
+                    if "RCS0" not in obj:
+                        obj["RCS0"] = 1.0
+                    RCS0 = obj["RCS0"]
+                    if "Backscatter N" not in obj:
+                        obj["Backscatter N"] = 1
+                    Backscatter_N = obj["Backscatter N"]
+                    if "Backscatter Dev (deg)" not in obj:
+                        obj["Backscatter Dev (deg)"] = 0.0
+        
+        
+        ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+        radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+    
 
 def sim_scenario(st):
     if st=='2 Cubes + 6843':
@@ -379,6 +403,8 @@ def sim_scenario(st):
         plt.ylabel('Received Signal Power (dB)')
         plt.show()
     
+    if st == 'Ray Tracing Refraction':
+        ssp.environment.scenarios.raytracing_refraction_test()
 def predefine_wifi_sensing():
     ssp.utils.initialize_environment()
     if "Wifi Sensing Settings" in bpy.data.objects:
@@ -778,6 +804,7 @@ def wifi_sensing():
             'paths': [(p['delay'], p['gain']) for p in paths]  # delay/gain as list of tuples
         })
         ssp.utils.increaseCurrentFrame()
+
 def raytracing_test():
     ssp.utils.trimUserInputs() 
     ssp.config.restart()
@@ -1517,3 +1544,131 @@ def generate_chest_vibration_target_simple(respiration_distance_mm=5,
 
     bpy.ops.object.mode_set(mode='OBJECT')
     return chest_skin
+def raytracing_refraction_test():
+    ssp.utils.trimUserInputs() 
+    ssp.config.restart()
+    empty_obj = bpy.data.objects.get("Plot Rays")
+    if empty_obj:
+        # Collect all children recursively
+        def collect_children_recursive(obj):
+            children = list(obj.children)
+            for child in obj.children:
+                children.extend(collect_children_recursive(child))
+            return children
+
+        # Get all descendants of the empty
+        descendants = collect_children_recursive(empty_obj)
+
+        # Deselect all objects first
+        bpy.ops.object.select_all(action='DESELECT')
+
+        # Select the empty and all its descendants
+        empty_obj.select_set(True)
+        for child in descendants:
+            child.select_set(True)
+
+        # Delete the selected objects
+        bpy.ops.object.delete()
+    
+    bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1))
+    allrays = bpy.context.object
+    allrays.name = f'Plot Rays'
+    while ssp.config.run():    
+        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1))
+        framerays = bpy.context.object
+        framerays.name = f'Plot Rays Frame {ssp.config.getCurrentFrame()}'
+        framerays.parent=allrays 
+    
+        suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        geocalculator = ssp.raytracing.BlenderGeometry()
+        
+        Suite_Position,ScattersGeo,HashFaceIndex_ScattersGeo,ScattersGeoV = geocalculator.get_Position_Velocity(bpy.context.scene, suite_information, ssp.config.CurrentFrame, 1)
+
+        tx = Suite_Position[0]['Radar'][0]['TX-Position'][0] 
+        rx = Suite_Position[0]['Radar'][0]['RX-Position'][0]
+        
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        start_point = tx
+        direction0 = Vector((1,.1,0))
+        epsilon = 1e-4
+        result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, start_point, direction0)
+        if result:
+            ssp.visualization.plot_continuous_curve([location,location+normal*.1],framerays)
+            v = [tx]
+            v.append(location)
+            # reflected_direction = ssp.raytracing.calculate_reflected_direction(direction0, normal)
+            # start_reflected_point = location + reflected_direction * epsilon
+            
+            mesh = hit_obj.data
+            normal_obj = mesh.polygons[face_index].normal
+            normal_world = hit_obj.matrix_world.to_3x3() @ normal_obj
+            normal_world.normalize()
+            dot_value = normal.dot(direction0)
+            n2pn1_first = 1.0/10.0
+            n2pn1 = n2pn1_first
+            if dot_value < 0:
+                n2pn1 = 1.0 / n2pn1
+            refracted_direction = ssp.raytracing.calculate_refracted_direction(direction0, normal, 1, n2pn1)
+            # if refracted_direction is None:
+            #     continue
+            start_refracted_point = location + refracted_direction * epsilon
+            
+            result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, start_refracted_point, refracted_direction)
+            if result:
+                ssp.visualization.plot_continuous_curve([location,location+normal*.1],framerays)
+                v.append(location)
+                reflected_direction = ssp.raytracing.calculate_reflected_direction(refracted_direction, normal)
+                start_reflected_point = location + reflected_direction * epsilon
+                result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, start_reflected_point, reflected_direction)
+                if result:
+                    ssp.visualization.plot_continuous_curve([location,location+normal*.1],framerays)
+                    v.append(location)
+                    
+                    mesh = hit_obj.data
+                    normal_obj = mesh.polygons[face_index].normal
+                    normal_world = hit_obj.matrix_world.to_3x3() @ normal_obj
+                    normal_world.normalize()
+                    dot_value = normal.dot(reflected_direction)
+                    n2pn1 = n2pn1_first
+                    if dot_value < 0:
+                        n2pn1 = 1.0 / n2pn1
+                    refracted_direction = ssp.raytracing.calculate_refracted_direction(reflected_direction, normal, 1, n2pn1)
+                    if refracted_direction is not None:
+                        v.append(location + refracted_direction * 100)
+            
+            
+            ray = ssp.visualization.plot_continuous_curve(v,framerays,curve_name=f'path {0} Frame {ssp.config.CurrentFrame}')
+        
+        # path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        # path_index = 1
+        # for isrx,suiteRX_d_drate_amp in path_d_drate_amp.items():
+        #     for irrx,radarRX_d_drate_amp in suiteRX_d_drate_amp.items():
+        #         for irx,RX_d_drate_amp in radarRX_d_drate_amp.items():
+        #             for istx,suiteTX_d_drate_amp in RX_d_drate_amp.items():
+        #                 for irtx,radarTX_d_drate_amp in suiteTX_d_drate_amp.items():
+        #                     for itx,TX_d_drate_amp in radarTX_d_drate_amp.items():
+        #                         for ip,p in enumerate(TX_d_drate_amp):
+        #                             d,dr,a,m=p
+        #                             print(path_index,len(m),m,d)
+        #                             tx = ssp.lastSuite_Position[istx]['Radar'][irtx]['TX-Position'][itx] 
+        #                             rx = ssp.lastSuite_Position[isrx]['Radar'][irrx]['RX-Position'][irx]
+        #                             v = [tx]
+        #                             for mi in m:
+        #                                 if isinstance(mi, list) and len(mi) == 2 and isinstance(mi[1], Vector):
+        #                                     v.append(mi[1])
+        #                                 if isinstance(mi, str):
+        #                                     _, is0, ir0, iris0 = mi.split('_')
+        #                                     is0 = int(is0)
+        #                                     ir0 = int(ir0)
+        #                                     iris0 = int(iris0)
+        #                                     v.append(ssp.lastSuite_Position[is0]['RIS'][ir0]['Position'][iris0])
+        #                             v.append(rx)
+        #                             ray = ssp.visualization.plot_continuous_curve(v,framerays,curve_name=f'path {path_index} Frame {ssp.config.CurrentFrame}')
+        #                             ray["Ray Tracing 20log Amp (dB)"]=float(20*np.log10(a))
+        #                             ray["Ray Tracing distance"]=float(d)
+        #                             ray["Ray Tracing doppler * f0"]=float(dr)
+        #                             ray["Middle Number"]=len(m)
+        #                             path_index+=1
+                                    
+        ssp.utils.increaseCurrentFrame()
+        break

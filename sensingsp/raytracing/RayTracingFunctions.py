@@ -48,6 +48,20 @@ def calculate_reflected_direction( incident_direction, normal):
     normal.normalize()
     reflected_direction = incident_direction - 2 * (normal.dot(incident_direction)) * normal
     return reflected_direction
+
+def calculate_refracted_direction(incident_direction, normal, n1, n2):
+    I = incident_direction.normalized()
+    N = normal.normalized()
+    if I.dot(N) > 0:
+        N = -N
+    eta = n1 / n2
+    cos_theta_i = -I.dot(N)
+    k = 1 - eta ** 2 * (1 - cos_theta_i ** 2)
+    if k < 0:
+        return None
+    else:
+        cos_theta_t = float(np.sqrt(k))
+        return eta * I + (eta * cos_theta_i - cos_theta_t) * N
 class SourceType:
     def __init__(self, source_type, ids):
         self.source_type = source_type  # Can be 'TX', 'scatter', 'RIS'
@@ -310,7 +324,20 @@ class RayTracingFunctions:
       result, location, normal, face_index, hit_obj, matrix = bpy.context.scene.ray_cast(depsgraph, sp, direction)
       if result:
         reflected_direction = calculate_reflected_direction(direction, normal)
-        
+        if 0:
+          mesh = hit_obj.data
+          normal_obj = mesh.polygons[face_index].normal
+          normal_world = hit_obj.matrix_world.to_3x3() @ normal_obj
+          normal_world.normalize()
+          dot_value = normal.dot(direction)
+          if dot_value > 0:
+              print("Direction is on the same side as the normal (points away from the face).")
+          elif dot_value < 0:
+              print("Direction is against the normal (points into the face).")
+          else:
+              print("Direction is perpendicular to the normal.")
+          # refracted_direction = calculate_refracted_direction(direction, normal, n1, n2)
+      
         num_vectors=1
         if "Backscatter N" in hit_obj:
             num_vectors = hit_obj["Backscatter N"]

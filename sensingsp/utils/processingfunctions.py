@@ -243,3 +243,91 @@ def extrafunctions(st):
             ws_axes["Load environment"]          =   os.path.join(ssp.config.temp_folder, "WifiSensing-2.blend")
             ws_axes["Random TX bit length"]      = 100
             ws_axes["Deterministic TX message"] = "SensingSP™ is an open-source library for simulating sensing systems with signal processing and ML tools. Install with: pip install sensingsp"
+    if st == "SensingSP Version":
+        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+        ws_axes = bpy.context.object
+        ws_axes.name = f'ssp Version: {ssp.__version__}'
+    if st == "Load Hub Environment":
+        if not("Load Hub Environment" in bpy.data.objects):
+            import os
+            bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+            ws_axes = bpy.context.object
+            ws_axes.name = f'Load Hub Environment'
+            metadata = ssp.utils.hub.load_metadata()
+            if not metadata:
+                return
+            ws_axes["1: Auto Next"]  = False
+            for category, files in metadata.items():
+                category_folder = os.path.join(ssp.config.temp_folder, "hub")
+                os.makedirs(category_folder, exist_ok=True)
+                category_folder = os.path.join(category_folder, category)
+                os.makedirs(category_folder, exist_ok=True)
+                for item in files:
+                    name = item["name"]
+                    local_file_path = os.path.join(category_folder, f"{name}.blend")
+                    ws_axes[f"{category}_{name}"]  = False
+        else:
+            ws_axes = bpy.data.objects["Load Hub Environment"]
+            metadata = ssp.utils.hub.load_metadata()
+            if not metadata:
+                return
+            import os
+            find = False
+            Auto_Next = ws_axes["1: Auto Next"] 
+            for category, files in metadata.items():
+                if find:
+                    break
+                category_folder = os.path.join(ssp.config.temp_folder, "hub")
+                os.makedirs(category_folder, exist_ok=True)
+                category_folder = os.path.join(category_folder, category)
+                os.makedirs(category_folder, exist_ok=True)
+                for item in files:
+                    name = item["name"]
+                    if ws_axes[f"{category}_{name}"]  != 0:
+                        blend_path = ssp.utils.hub.fetch_file(category, name)
+                        find = True
+                        break
+            find2 = False
+            if Auto_Next:
+                b = False
+                for category, files in metadata.items():
+                    for item in files:
+                        name = item["name"]
+                        if find2:
+                            ws_axes[f"{category}_{name}"] = True
+                            b = True
+                            break
+                        if ws_axes[f"{category}_{name}"]  != 0:
+                            ws_axes[f"{category}_{name}"] = False
+                            find2 = True
+                    if b:
+                        break
+                if find2 == False:
+                    b = False
+                    for category, files in metadata.items():
+                        for item in files:
+                            name = item["name"]
+                            ws_axes[f"{category}_{name}"] = True
+                            b = True
+                            break
+                        if b:
+                            break
+                view_layer = bpy.context.view_layer
+                bpy.ops.object.select_all(action='DESELECT')
+                for obj in bpy.data.objects:
+                    if obj.name in view_layer.objects.keys():
+                        view_layer.objects.active = obj
+                        obj.select_set(True)
+                if "Simulation Settings" in bpy.data.objects:
+                    bpy.data.objects["Simulation Settings"].select_set(False)
+                if "Wifi Sensing Settings" in bpy.data.objects:
+                    bpy.data.objects["Wifi Sensing Settings"].select_set(False)
+                if "Load Hub Environment" in bpy.data.objects:
+                    bpy.data.objects["Load Hub Environment"].select_set(False)
+                
+                bpy.ops.object.delete()        
+                
+            if find:
+                if os.path.exists(blend_path):
+                    ssp.environment.add_blenderfileobjects(blend_path)
+                    ssp.utils.define_settings()

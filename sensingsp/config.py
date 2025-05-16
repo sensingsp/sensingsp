@@ -86,6 +86,7 @@ class Config():
                 ('Target RCS Simulation', "Target RCS Simulation", "Target RCS Simulation"),
                 ('Target RCS Simulation Plane', "Target RCS Simulation Plane", "Target RCS Simulation Plane"),
                 ('Wifi Sensing', "Wifi Sensing", "Wifi Sensing"),
+                ('Ray Tracing Refraction', "Ray Tracing Refraction", "Ray Tracing Refraction"),
             ]
         self.extratypes =[
                 ('Surface Materials', "Surface Materials", "Surface Materials"),
@@ -99,6 +100,8 @@ class Config():
                 ('Balanced RayTracing', "Balanced RayTracing", "Balanced RayTracing"),
                 ('Advanced Intense RayTracing', "Advanced Intense RayTracing", "Advanced Intense RayTracing"),
                 ('Wifi Sensing Settings', "Wifi Sensing Settings", "Wifi Sensing Settings"),
+                ('Load Hub Environment', "Load Hub Environment", "Load Hub Environment"),
+                ('SensingSP Version', "SensingSP Version", "SensingSP Version"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
         self.myglobal_outsidedefined_RIS = []

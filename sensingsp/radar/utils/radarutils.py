@@ -28,6 +28,7 @@ class RadarSensorsCategory(Enum):
     URA_SameTXRX = 11
     URA_AllTX = 12
     URA_LinearHtxVrx = 13
+    ULA_AllRX_N = 14
 
 class RadarSignalGenerationConfigurations(Enum):
     Spillover_Enabled = 1
@@ -1406,18 +1407,18 @@ def predefined_array_configs_infineon_BGT24LTR11_CW(isuite, iradar, location, ro
     return empty    
     
 def setDefaults(empty,f0):
-    empty["Transmit_Power_dBm"] = 12
+    empty["Transmit_Power_dBm"] = 12.0
     empty["Transmit_Antenna_Element_Pattern"] = "Omni"
-    empty["Transmit_Antenna_Element_Gain_db"] = 3
-    empty["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 120
-    empty["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 120
-    empty["Receive_Antenna_Element_Gain_db"] = 0
+    empty["Transmit_Antenna_Element_Gain_db"] = 3.0
+    empty["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 120.0
+    empty["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 120.0
+    empty["Receive_Antenna_Element_Gain_db"] = 0.0
     empty["Receive_Antenna_Element_Pattern"] = "Omni"
-    empty["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = 120
-    empty["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = 120
+    empty["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = 120.0
+    empty["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = 120.0
     empty["Center_Frequency_GHz"] = f0/1e9
-    empty['PRI_us']=70
-    empty['Fs_MHz']=5
+    empty['PRI_us']=70.0
+    empty['Fs_MHz']=5.0
     # empty['Ts_ns']=1000/empty['Fs_MHz']
     empty['NPulse'] = 3 * 64
     empty['N_ADC']  = 256
@@ -1428,7 +1429,7 @@ def setDefaults(empty,f0):
     # empty['Lambda_mm']=1000*LightSpeed/empty["Center_Frequency_GHz"]/1e9
     # empty['FMCW_ChirpTime_us'] = 60
     # empty['FMCW_Bandwidth_GHz'] = 1
-    empty['Tempreture_K'] = 290
+    empty['Tempreture_K'] = 290.0
     empty['FMCW_ChirpSlobe_MHz_usec'] = 1000.0/60.0    #1000*empty['FMCW_Bandwidth_GHz']/empty['FMCW_ChirpTime_us']
     empty['RangeFFT_OverNextP2'] = 2
     empty['Range_Start']=0
@@ -1445,15 +1446,15 @@ def setDefaults(empty,f0):
     empty['CFAR_Angle_guard_cells']=1
     empty['CFAR_Angle_training_cells']=3
     empty['CFAR_Angle_false_alarm_rate']=.1
-    empty['CFAR_RD_alpha']=30
-    empty['CFAR_Angle_alpha']=5
+    empty['CFAR_RD_alpha']=30.0
+    empty['CFAR_Angle_alpha']=5.0
     empty["FMCW"] = True
-    empty['ADC_peak2peak']=2
+    empty['ADC_peak2peak']=2.0
     empty['ADC_levels']=256
-    empty['ADC_ImpedanceFactor']=300
-    empty['ADC_LNA_Gain_dB']=50
-    empty['RF_NoiseFiguredB']=5
-    empty['RF_AnalogNoiseFilter_Bandwidth_MHz']=10
+    empty['ADC_ImpedanceFactor']=300.0
+    empty['ADC_LNA_Gain_dB']=50.0
+    empty['RF_NoiseFiguredB']=5.0
+    empty['RF_AnalogNoiseFilter_Bandwidth_MHz']=10.0
     empty['ADC_SaturationEnabled']=False
     empty['RadarMode']='FMCW'# 'Pulse' 'CW'
     empty['PulseWaveform']='WaveformFile.txt'
@@ -2020,11 +2021,18 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         return radar
     if radarSensor==RadarSensorsCategory.ULA_AllRX:
         N = ssp.config.AddRadar_ULA_N
-        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[0],LinearArray_RXPos=[-i*3e8/76e9/2 for i in range(N*N)])
+        d = ssp.config.AddRadar_ULA_d
+        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[0],LinearArray_RXPos=[-i*3e8/76e9*d for i in range(N*N)])
+        return radar
+    if radarSensor==RadarSensorsCategory.ULA_AllRX_N:
+        N = ssp.config.AddRadar_ULA_N
+        d = ssp.config.AddRadar_ULA_d
+        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[0],LinearArray_RXPos=[-i*3e8/76e9*d for i in range(N)])
         return radar
     if radarSensor==RadarSensorsCategory.ULA_SameTXRX:
         N = ssp.config.AddRadar_ULA_N
-        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[-N*(i-0)*3e8/76e9/2 for i in range(N)],LinearArray_RXPos=[-i*3e8/76e9/2 for i in range(N)])
+        d = ssp.config.AddRadar_ULA_d
+        radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9,LinearArray_TXPos=[-N*(i-0)*3e8/76e9*d for i in range(N)],LinearArray_RXPos=[-i*3e8/76e9*d for i in range(N)])
         return radar
     if radarSensor==RadarSensorsCategory.SISO_mmWave76GHz:
         radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 

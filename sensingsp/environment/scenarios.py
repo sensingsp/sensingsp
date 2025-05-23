@@ -413,19 +413,29 @@ def predefine_wifi_sensing():
         if os.path.exists(blend_path):
             ssp.environment.add_blenderfileobjects(blend_path)
             ssp.utils.define_settings()
-        
+        else:
+            blend_path = ssp.utils.hub.fetch_file("environments","Bus_WifiSensing")
+            if os.path.exists(blend_path):
+                ssp.environment.add_blenderfileobjects(blend_path)
+                ssp.utils.define_settings()
+            blend_path = ssp.utils.hub.fetch_file("animation", "WalkingMan")
+            if os.path.exists(blend_path):
+                ssp.environment.add_blenderfileobjects(blend_path,rotation=(0, 0, np.pi/2), translation=(3, -6, 0))
+                ssp.utils.define_settings()
+    
+            
     radar = ssp.radar.utils.addRadar(
         radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz,
         location_xyz=[0, 0, 0])
     radar.rotation_euler = [0, 0, 0]
     obj = bpy.data.objects.get("TX_0_0_1_0_00001")
     if obj:
-        obj.location = (-1.46, -1.42, 2.1)  # Replace x, y, z with the desired coordinates
+        obj.location = (2, -10, 3)  # Replace x, y, z with the desired coordinates
         obj.scale = (.02, .02, .02)       
         # obj.rotation_euler = (0, np.pi*3/4, 0)
     obj = bpy.data.objects.get("RX_0_0_1_0_00001")
     if obj:
-        obj.location = (.3, .3, .85)  # Replace x, y, z with the desired coordinates
+        obj.location = (4, -5, 2)  # Replace x, y, z with the desired coordinates
         obj.scale = (.1, .1, .1)       
         obj.rotation_euler = (0, np.pi/2, 0)    
     

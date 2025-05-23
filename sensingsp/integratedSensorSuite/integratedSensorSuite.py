@@ -1328,7 +1328,7 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
               FigsAxes[0,1].set_xlabel('Range (m)')
               FigsAxes[0,1].set_ylabel('Amp.')
 
-              maxDoppler =.5 /PRI 
+              maxDoppler =.5 /PRI / M_TX
               extent = [-maxDoppler* specifications['Lambda']/2 ,maxDoppler * specifications['Lambda']/2,d_fft[-1],d_fft[0]]
               rangeDoppler4CFAR = np.mean(np.abs(rangeDopplerTXRX),axis=(2,3))
               FigsAxes[1,0].imshow(10*np.log10(rangeDoppler4CFAR), extent=extent, aspect='auto')
@@ -1474,7 +1474,7 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
             FigsAxes[0,1].set_xlabel('Range (m)')
             FigsAxes[0,1].set_ylabel('Amp.')
 
-            maxDoppler =.5 /PRI 
+            maxDoppler =.5 /PRI /M_TX
             extent = [-maxDoppler* specifications['Lambda']/2 ,maxDoppler * specifications['Lambda']/2,d_fft[-1],d_fft[0]]
             FigsAxes[1,0].imshow(10*np.log10(rangeDoppler4CFAR), extent=extent, aspect='auto')
             FigsAxes[1,0].set_title("Range Doppler abs(mean) (CFAR)")

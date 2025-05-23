@@ -244,9 +244,58 @@ def extrafunctions(st):
             ws_axes["Random TX bit length"]      = 100
             ws_axes["Deterministic TX message"] = "SensingSP™ is an open-source library for simulating sensing systems with signal processing and ML tools. Install with: pip install sensingsp"
     if st == "SensingSP Version":
-        bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
-        ws_axes = bpy.context.object
-        ws_axes.name = f'ssp Version: {ssp.__version__}'
+        # Check if property is already defined to avoid re-register errors
+        if not hasattr(bpy.types.Scene, "my_custom_text"):
+            bpy.types.Scene.my_custom_text = bpy.props.StringProperty(
+                name="Settings",
+                default=f'Get Version: {ssp.__version__}',
+            )
+        else:
+            bpy.context.scene.my_custom_text = f'Get Version: {ssp.__version__}'
+            
+        def draw(self, context):
+            self.layout.label(text="Version:")  # Simple label
+            self.layout.prop(context.scene, "my_custom_text", text="")  # Text box to copy from
+
+        bpy.context.window_manager.popup_menu(draw, title="Sensing Signal Processing", icon='INFO')
+        # bpy.ops.message.dialog('INVOKE_DEFAULT')
+        # bpy.context.window_manager.popup_menu(title="Settings Info", icon='INFO')
+        # bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
+        # ws_axes = bpy.context.object
+        # ws_axes.name = f'ssp Version: {ssp.__version__}'
+    if st == "Environment information":
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+
+        geocalculator = ssp.raytracing.BlenderGeometry()
+        suite_information = ssp.raytracing.BlenderSuiteFinder().find_suite_information()
+        Suite_Position, ScattersGeo, HashFaceIndex_ScattersGeo, ScattersGeoV = geocalculator.get_Position_Velocity(
+            bpy.context.scene, suite_information, ssp.config.CurrentFrame, 1
+        )
+
+        # Build information text
+        text = f'Triangles Number: {len(ScattersGeo)}\n  Suites Number: {len(Suite_Position)} , '
+        for i, suite in enumerate(Suite_Position):
+            text += f'\nSuite {i+1}: '
+            for j, radar in enumerate(suite['Radar']):
+                tx_count = len(radar['TX-Position'])
+                rx_count = len(radar['RX-Position'])
+                text += f'\n  Radar {j+1}: {tx_count} TX, {rx_count} RX, '
+        if not hasattr(bpy.types.Scene, "ssp_env_info"):
+            bpy.types.Scene.ssp_env_info = bpy.props.StringProperty(
+                name="Settings",
+                default=text,
+            )
+        else:
+            bpy.context.scene.ssp_env_info = text
+
+        # Popup draw function
+        def draw(self, context):
+            self.layout.label(text="Environment information:")
+            self.layout.prop(context.scene, "ssp_env_info", text="")
+
+        bpy.context.window_manager.popup_menu(draw, title="Sensing Signal Processing", icon='INFO')
+
     if st == "Load Hub Environment":
         if not("Load Hub Environment" in bpy.data.objects):
             import os

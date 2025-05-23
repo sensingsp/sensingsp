@@ -26,7 +26,7 @@ install_requires = [
 # Define the setup
 setup(
     name='sensingsp',
-    version='1.5.4',
+    version='1.5.5',
     packages=find_packages(),
     install_requires=install_requires,
     url='https://sensingsp.github.io/',
@@ -34,8 +34,8 @@ setup(
     author='Moein Ahmadi',
     author_email='moein.ahmadi@uni.lu, gmoein@gmail.com',
     description=(
-        'SensingSP™ is an open-source library designed for simulating' 
-        'electromagnetic sensing systems and implementing signal processing' 
+        'SensingSP™ is an open-source library designed for simulating ' 
+        'electromagnetic sensing systems and implementing signal processing ' 
         'and machine learning algorithms.'
     ),
     long_description=long_description,

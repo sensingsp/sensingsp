@@ -621,6 +621,8 @@ def appselect(st):
     if st=="GAN Radar Waveforms":
         ssp.ai.radarML.GANWaveforms.runradarWaveformapp()
         # ssp.ai.radarML.H
+    if st=="SHARP Wifi Sensing":
+        ssp.ai.radarML.SHARPWifiSensing.runradarSHARPWifiSensingapp() 
         
         
 def runfmcwchirpapp():

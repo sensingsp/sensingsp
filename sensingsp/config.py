@@ -21,7 +21,9 @@ class Config():
         self.ui_available = self.check_ui_available()
         self.temp_folder = self.create_temp_folder('SensingSP')
         self.AddRadar_ULA_N = 4
+        self.AddRadar_ULA_d = .5
         self.AddRadar_URA_NxNy = [4,4]
+        self.AddRadar_URA_dxdy = [.5,.5]
         self.Paths = []
         self.CurrentFrame = 1
         self.CurrentTime  = 0
@@ -59,6 +61,7 @@ class Config():
                 ('Hand Gesture MisoCNN', "Hand Gesture MisoCNN", "Hand Gesture MisoCNN"),
                 ('Human Health Monitoring', "Human Health Monitoring", "Human Health Monitoring"),
                 ('GAN Radar Waveforms', "GAN Radar Waveforms", "GAN Radar Waveforms"),
+                ('SHARP Wifi Sensing', "SHARP Wifi Sensing", "SHARP Wifi Sensing"),
             ]
         self.radars =[
                 ('TI AWR 1642 (2TX-4RX)', "TI AWR 1642 (2TX-4RX)", "TI AWR 1642 (2TX-4RX)"),
@@ -101,6 +104,7 @@ class Config():
                 ('Advanced Intense RayTracing', "Advanced Intense RayTracing", "Advanced Intense RayTracing"),
                 ('Wifi Sensing Settings', "Wifi Sensing Settings", "Wifi Sensing Settings"),
                 ('Load Hub Environment', "Load Hub Environment", "Load Hub Environment"),
+                ('Environment information', "Environment information", "Environment information"),
                 ('SensingSP Version', "SensingSP Version", "SensingSP Version"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"

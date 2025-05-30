@@ -184,33 +184,37 @@ class SHARPPipelineApp(QMainWindow):
             return
         try:
             mat = loadmat(fpath)
-            msg = f"Variables in {fname}:\n"
-            for k in mat:
-                if not k.startswith("__"):
-                    arr = mat[k]
-                    msg += f"- {k}: {type(arr)}, shape: {getattr(arr, 'shape', None)}\n"
-            QMessageBox.information(self, "File Info", msg)
-            # Try to plot the first variable if it is 2D/3D numeric
-            for k in mat:
-                if not k.startswith("__") and isinstance(mat[k], np.ndarray):
-                    arr = mat[k]
-                    if arr.ndim == 2:
-                        plt.figure()
-                        plt.imshow(arr, aspect='auto', cmap='jet')
-                        plt.title(f"{fname} - {k}")
-                        plt.colorbar()
-                        plt.show()
-                        break
-                    elif arr.ndim == 3:
-                        plt.figure()
-                        plt.imshow(arr[0], aspect='auto', cmap='jet')
-                        plt.title(f"{fname} - {k} [0]")
-                        plt.colorbar()
-                        plt.show()
-                        break
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error reading {fname}:\n{e}")
+            if "csi_buff" not in mat:
+                raise KeyError("Key 'csi_buff' not found in .mat file.")
 
+            csi_buff = mat["csi_buff"]
+            N = csi_buff.shape[0]
+            CSI_Rate = 200  # Hz
+            Plot_Time = 3  # seconds
+            PlotN = int(CSI_Rate * Plot_Time)
+            loopN = N // PlotN
+            loopN = min(loopN, 10)  # Limit to 10 plots for performance
+            # Set up the figure once
+            fig, ax = plt.subplots()
+            img = ax.imshow(np.abs(csi_buff[0:PlotN, :]), aspect='auto', cmap='jet')
+            plt.title("CSI Plot")
+            plt.colorbar(img, ax=ax, label='Amplitude')
+            plt.xlabel("Subcarriers")
+            plt.ylabel("Time (samples)")
+            plt.tight_layout()
+
+            for plot_i in range(loopN):
+                csi_buff_plot = np.abs(csi_buff[plot_i*PlotN:(plot_i+1)*PlotN, :])
+                img.set_data(csi_buff_plot)
+                ax.set_title(f"CSI Frame {plot_i}")
+                ax.set_ylim(0, csi_buff_plot.shape[0])
+                ax.set_xlim(0, csi_buff_plot.shape[1])
+                plt.pause(0.1)
+
+            plt.show()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error reading {fname}:\n{str(e)}")
     # ---- Phase Sanitization step, with all parameters ----
     def run_phase_sanitization(self):
         data_dir = self.dataset_folder_input.text()
@@ -264,7 +268,9 @@ class SHARPPipelineApp(QMainWindow):
         subprocess.call(cmd, shell=True)
         self.status_label.setText("Training Finished.")
 
-
+import sys
+sys.path.append("C:/Users/moein.ahmadi/OneDrive - University of Luxembourg/SensingSP/sensingsp-main/sensingsp")
+sys.path.append("/Users/moeinahmadi/Library/CloudStorage/OneDrive-UniversityofLuxembourg/SensingSP/sensingsp-main/sensingsp")
 import sensingsp as ssp
 
 def runradarSHARPWifiSensingapp():

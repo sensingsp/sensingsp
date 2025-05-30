@@ -7,6 +7,7 @@ long_description = (this_directory / "README.md").read_text(encoding='utf-8')
 
 # Define the required dependencies
 install_requires = [
+    'numpy<2.0.0',                # Ensure compatibility with modules compiled for NumPy 1.x
     'bpy>=4.0.0',                 # Blender Python API
     'matplotlib>=3.5.0',          # Plotting library
     'opencv-python>=4.5.0',       # OpenCV for computer vision
@@ -26,7 +27,7 @@ install_requires = [
 # Define the setup
 setup(
     name='sensingsp',
-    version='1.5.5',
+    version='1.5.6',
     packages=find_packages(),
     install_requires=install_requires,
     url='https://sensingsp.github.io/',

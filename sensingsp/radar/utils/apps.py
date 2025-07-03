@@ -3,6 +3,12 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QFormLayout, QLineEdit, QLabel, QPushButton, QHBoxLayout, QScrollArea, QFileDialog, QMessageBox, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox
 )
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QPainter, QPen,QTransform
+from PyQt5.QtWidgets import (
+    QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
+    QGraphicsScene, QGraphicsRectItem, QSizePolicy,QGraphicsLineItem
+)
+from PyQt5.QtCore import QRectF
 import json
 
 import numpy as np
@@ -10,7 +16,19 @@ import numpy as np
 # import pyqtgraph.opengl as gl
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import scipy.io
+import os
 import sensingsp as ssp
+
+# import numpy as np
+# from PyQt5.QtWidgets import (
+#     QMainWindow, QApplication, QWidget, QVBoxLayout,
+#     QPushButton, QFileDialog, QLabel, QHBoxLayout
+# )
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+# from mpl_toolkits.mplot3d import Axes3D
+# import sys
 
 # class PyQtGraph3DApp(QtWidgets.QMainWindow):
 #     def __init__(self, data):
@@ -126,6 +144,587 @@ def FMCW_Chirp_Parameters(rangeResolution, N_ADC, ChirpTimeMax, radialVelocityRe
     results.append(f"Pulse Number in CPI < {int(CPI_Time / PRI)}")
     return results
 
+
+class RISAnalysisApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("RIS Analysis")
+        self.setGeometry(100, 100, 1000, 800)
+        self.initUI()
+
+    def initUI(self):
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        self.vbox = QVBoxLayout(main_widget)
+        
+        self.linedit = QLineEdit()
+        self.linedit.setText(os.path.join(ssp.config.temp_folder, "RIS_data.mat"))
+        self.vbox.addWidget(self.linedit)
+        
+        self.label = QLabel("Freq (GHz):")
+        self.vbox.addWidget(self.label)
+        self.f0_lineedit = QLineEdit()
+        self.f0_lineedit.setText("62")
+        self.vbox.addWidget(self.f0_lineedit)
+        self.label2 = QLabel("Nx,Ny,dx,dy")
+        self.vbox.addWidget(self.label2)
+        self.n_lineedit = QLineEdit()
+        self.n_lineedit.setText("100,100,0.5,0.5")
+        self.vbox.addWidget(self.n_lineedit)
+        self.labelradarpos = QLabel("Radar Position (x,y,z):")
+        self.vbox.addWidget(self.labelradarpos)
+        self.radarpos_lineedit = QLineEdit()
+        self.radarpos_lineedit.setText("-0.5,0,-.5")
+        self.vbox.addWidget(self.radarpos_lineedit)
+        
+        self.labeltargetpos = QLabel("Target Position (x,y,z):")    
+        self.vbox.addWidget(self.labeltargetpos)
+        self.targetpos_lineedit = QLineEdit()
+        self.targetpos_lineedit.setText("0.5,0,-0.5")
+        self.vbox.addWidget(self.targetpos_lineedit)
+        
+        self.generate_button = QPushButton("Generate RIS Scenario 1")
+        self.generate_button.clicked.connect(self.generate_ris_data)
+        self.vbox.addWidget(self.generate_button)
+        self.generate_button2 = QPushButton("Generate RIS Scenario 2")
+        self.generate_button2.clicked.connect(self.generate_ris_data2)
+        self.vbox.addWidget(self.generate_button2)
+        
+        self.vbox.addStretch()
+        
+        # self.generate_button3 = QPushButton("Generate RIS Scenario 3")
+        # self.generate_button3.clicked.connect(self.generate_ris_data3)
+        # self.vbox.addWidget(self.generate_button3)
+
+        # self.load_button = QPushButton("Load RIS, Radar, and Target Positions")
+        # self.load_button.clicked.connect(self.load_data)
+        # self.vbox.addWidget(self.load_button)
+
+        self.label = QLabel("N Grid")
+        self.vbox.addWidget(self.label)
+        self.ng_lineedit = QLineEdit()
+        self.ng_lineedit.setText("40")
+        self.vbox.addWidget(self.ng_lineedit)
+        self.label = QLabel("d(Wavelength),Arc(deg) Grid")
+        self.vbox.addWidget(self.label)
+        self.arc_lineedit = QLineEdit()
+        self.arc_lineedit.setText("2,40")
+        self.vbox.addWidget(self.arc_lineedit)
+        self.label = QLabel("Dynamic Range (dB)")
+        self.vbox.addWidget(self.label)
+        self.dynr_lineedit = QLineEdit()
+        self.dynr_lineedit.setText("100")
+        self.vbox.addWidget(self.dynr_lineedit)
+        
+        self.run_button = QPushButton("Run")
+        self.run_button.clicked.connect(self.run_analysis)
+        self.vbox.addWidget(self.run_button)
+        self.vbox.addStretch()
+        self.blender_button = QPushButton("Blender scenario BR 18")
+        self.blender_button.clicked.connect(self.run_blender_button)
+        self.vbox.addWidget(self.blender_button)
+        self.blender_button2 = QPushButton("Blender scenario BR 18+HR 70")
+        self.blender_button2.clicked.connect(self.run_blender_button2)
+        self.vbox.addWidget(self.blender_button2)
+        self.blenderpath_button = QPushButton("Path sim")
+        self.blenderpath_button.clicked.connect(self.run_blenderpath_button)
+        self.vbox.addWidget(self.blenderpath_button)
+
+        # self.status_label = QLabel("Please generate or load data.")
+        # self.vbox.addWidget(self.status_label)
+
+        # self.canvas = FigureCanvas(Figure(figsize=(8, 6)))
+        # self.vbox.addWidget(self.canvas)
+        # self.ax = self.canvas.figure.add_subplot(111, projection='3d')
+
+    def generate_ris_data(self):
+        f0 = self.f0_lineedit.text()
+        f0 = float(f0)
+        f0 = f0 * 1e9
+        Lambda = 3e8 / f0
+        nxnyLxLy = self.n_lineedit.text().split(",")
+        if len(nxnyLxLy) != 4:
+            QMessageBox.warning(self, "Input Error", "Please enter Nx, Ny, dx, dy in the format: Nx,Ny,dx,dy")
+            return
+        radarposLineedit = self.radarpos_lineedit.text().split(",")
+        if len(radarposLineedit) != 3:
+            QMessageBox.warning(self, "Input Error", "Please enter Radar Position (x,y,z) in the format: x,y,z")
+            return
+        radar_pos = np.array(radarposLineedit, dtype=float)
+        # target_pos = np.array([.5, 0, .5])
+        targetposLineedit = self.targetpos_lineedit.text().split(",")
+        if len(targetposLineedit) != 3:
+            QMessageBox.warning(self, "Input Error", "Please enter Target Position (x,y,z) in the format: x,y,z")
+            return 
+        target_pos = np.array(targetposLineedit, dtype=float)
+        # target_pos = np.array([.5, 0, .5])
+
+        pos = []
+        Nx, Ny = int(nxnyLxLy[0]), int(nxnyLxLy[1])
+        dx, dy = float(nxnyLxLy[2])*Lambda, float(nxnyLxLy[3])*Lambda
+        for i in range(Nx):
+            for j in range(Ny):
+                x = (i-Nx/2) * dx
+                y = (j-Ny/2) * dy
+                z = 0
+                pos.append((x, y, z))
+        pos = np.array(pos)
+        N=0
+        d1 = np.linalg.norm(radar_pos - pos[N])
+        d2 = np.linalg.norm(target_pos - pos[N])
+        d0 = d1 + d2
+        d1 = np.linalg.norm(radar_pos - pos, axis=1)
+        d2 = np.linalg.norm(target_pos - pos, axis=1)
+        di = d1 + d2
+        d = di - d0
+        phase = 2 * np.pi / Lambda * d
+        a = 1 * np.exp(1j * phase)
+        
+        
+        scipy.io.savemat(self.linedit.text(), {'pos': pos,'a': a, 'radar_pos': radar_pos, 'target_pos': target_pos})
+        # Plotting
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot radar and target
+        ax.plot([radar_pos[0]], [radar_pos[1]], [radar_pos[2]], 'ro', markersize=10, label='Radar Position')
+        ax.plot([target_pos[0]], [target_pos[1]], [target_pos[2]], 'bo', markersize=10, label='Target Position')
+
+        # Plot antennas
+        ax.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]), c='g', s=10, label='Antenna Elements')
+
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_zlabel('Z [m]')
+        ax.legend()
+        ax.set_title('Radar, Target, and Antenna Elements')
+        # Equal axis function
+        self.set_axes_equal(ax)
+
+        phases = np.degrees(np.angle(a))
+
+        # Plot antennas colored by phase
+        fig2 = plt.figure(figsize=(10,10))
+        ax2 = fig2.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        sc = ax2.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]),
+                        c=phases, cmap='hsv', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        cbar.set_label('Phase (radians)')
+
+        ax2.set_xlabel('X [m]')
+        ax2.set_ylabel('Y [m]')
+        ax2.set_zlabel('Z [m]')
+        ax2.set_title('Antenna Element Phases')
+        ax2.legend()
+        self.set_axes_equal(ax2)
+
+        plt.show()
+    def generate_ris_data2(self):
+        f0 = self.f0_lineedit.text()
+        f0 = float(f0)
+        f0 = f0 * 1e9
+        Lambda = 3e8 / f0
+        nxnyLxLy = self.n_lineedit.text().split(",")
+        if len(nxnyLxLy) != 4:
+            QMessageBox.warning(self, "Input Error", "Please enter Nx, Ny, dx, dy in the format: Nx,Ny,dx,dy")
+            return
+        radarposLineedit = self.radarpos_lineedit.text().split(",")
+        if len(radarposLineedit) != 3:
+            QMessageBox.warning(self, "Input Error", "Please enter Radar Position (x,y,z) in the format: x,y,z")
+            return
+        radar_pos = np.array(radarposLineedit, dtype=float)
+        # target_pos = np.array([.5, 0, .5])
+        targetposLineedit = self.targetpos_lineedit.text().split(",")
+        if len(targetposLineedit) != 3:
+            QMessageBox.warning(self, "Input Error", "Please enter Target Position (x,y,z) in the format: x,y,z")
+            return 
+        target_pos = np.array(targetposLineedit, dtype=float)
+        # target_pos = np.array([.5, 0, .5])
+
+        pos = []
+        Nx, Ny = int(nxnyLxLy[0]), int(nxnyLxLy[1])
+        dx, dy = float(nxnyLxLy[2])*Lambda, float(nxnyLxLy[3])*Lambda
+        for i in range(Nx):
+            for j in range(Ny):
+                x = (i-Nx/2) * dx
+                y = (j-Ny/2) * dy
+                z = 0
+                pos.append((x, y, z))
+        pos = np.array(pos)
+        N=0
+        d1 = np.linalg.norm(radar_pos - pos[N])
+        d2 = np.linalg.norm(target_pos - pos[N])
+        d0 = d1 + d2
+        d1 = np.linalg.norm(radar_pos - pos, axis=1)
+        d2 = np.linalg.norm(target_pos - pos, axis=1)
+        di = d1 + d2
+        d = di - d0
+        phase = 2 * np.pi / Lambda * d
+        phase = phase * 0
+        a = 1 * np.exp(1j * phase)
+        
+        
+        scipy.io.savemat(self.linedit.text(), {'pos': pos,'a': a, 'radar_pos': radar_pos, 'target_pos': target_pos})
+        # Plotting
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot radar and target
+        ax.plot([radar_pos[0]], [radar_pos[1]], [radar_pos[2]], 'ro', markersize=10, label='Radar Position')
+        ax.plot([target_pos[0]], [target_pos[1]], [target_pos[2]], 'bo', markersize=10, label='Target Position')
+
+        # Plot antennas
+        ax.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]), c='g', s=10, label='Antenna Elements')
+
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_zlabel('Z [m]')
+        ax.legend()
+        ax.set_title('Radar, Target, and Antenna Elements')
+        # Equal axis function
+        self.set_axes_equal(ax)
+
+        phases = np.degrees(np.angle(a))
+
+        # Plot antennas colored by phase
+        fig2 = plt.figure(figsize=(10,10))
+        ax2 = fig2.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        sc = ax2.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]),
+                        c=phases, cmap='hsv', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        cbar.set_label('Phase (radians)')
+
+        ax2.set_xlabel('X [m]')
+        ax2.set_ylabel('Y [m]')
+        ax2.set_zlabel('Z [m]')
+        ax2.set_title('Antenna Element Phases')
+        ax2.legend()
+        self.set_axes_equal(ax2)
+
+        plt.show()
+    def run_blenderpath_button(self):
+        all = []
+        fig, axs = plt.subplots(2, 3, figsize=(10, 8))
+        all_signals = []
+        while ssp.config.run():
+            path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+            
+            all.append( path_d_drate_amp[0][0][0][0][0][0] )
+            N=0
+            for i, a in enumerate(all):
+                if len(a)>N:
+                    N = len(a)
+            dva_path_frame = np.zeros((len(all),N, 3))
+            for i, a in enumerate(all):
+                for p,ap in enumerate(a):
+                    dva_path_frame[i,p,:] = ap[:3]
+            axs[0,0].cla()
+            axs[0,0].plot(dva_path_frame[:, :, 0])
+            axs[0,0].set_title("distance")
+            axs[0,0].set_ylabel("Distance (m)")
+            axs[0,0].set_xlabel("Frame")
+            axs[0,1].cla()
+            axs[0,1].plot(dva_path_frame[:, :, 1])
+            axs[0,1].set_title("Doppler")
+            axs[0,1].set_ylabel("Distance Rate")
+            axs[0,1].set_xlabel("Frame")
+            axs[1,0].cla()
+            axs[1,0].plot(20*np.log10(np.abs(dva_path_frame[:, :, 2])))
+            axs[1,0].set_title("Amplitude")
+            axs[1,0].set_ylabel("Amplitude (dB)")
+            axs[1,0].set_xlabel("Frame")
+            
+            Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+            for XRadar, timeX in Signals[0]['radars'][0]:
+                fast_time_window = ssp.radar.utils.hamming(XRadar.shape[0])
+                X_windowed_fast = XRadar * fast_time_window[:, np.newaxis, np.newaxis]
+                NFFT_Range = int(2 ** (np.ceil(np.log2(XRadar.shape[0])) + 1))
+                d_fft = (np.arange(NFFT_Range) * ssp.LightSpeed / 2 /
+                         ssp.RadarSpecifications[0][0]['FMCW_ChirpSlobe'] / NFFT_Range / ssp.RadarSpecifications[0][0]['Ts'])
+                X_fft_fast = np.fft.fft(X_windowed_fast, axis=0, n=NFFT_Range) / XRadar.shape[0]
+                axs[1,1].cla()
+                amplitude_db = 20 * np.log10(np.abs(X_fft_fast[:, 0, 0]))
+                axs[1,1].plot(d_fft, amplitude_db)
+                axs[1,1].set_title("Range FFT")
+                axs[1,1].set_ylabel("Amplitude (dB)")
+                axs[1,1].set_xlabel("Range (m)")
+                axs[1,1].set_xlim(0, 5)
+                range_target = 1.55
+                idx = np.argmin(np.abs(d_fft - range_target))
+                value_at_1_8 = amplitude_db[idx]
+                axs[1,1].vlines(range_target, value_at_1_8, -30, color='red', linestyle='--', linewidth=2)
+                all_signals.append([X_fft_fast[idx, 0, 0], timeX[0]])
+                sig = np.array(all_signals)
+                uw = np.unwrap(np.angle(sig[:,0]))
+                
+                axs[0,2].cla()
+                axs[0,2].plot(np.real(sig[:,1]), uw)
+                axs[0,2].set_title("Unwrapped Phase")
+                axs[0,2].set_ylabel("Phase (rad)")
+                axs[0,2].set_xlabel("Time (s)")
+                axs[1,2].cla()
+                T = np.mean(np.diff(np.real(sig[:,1])))
+                NFFT = int(2 ** (3+np.ceil(np.log2(len(uw)))))
+                fftuw = np.fft.fft(uw, n=NFFT) / len(uw)
+                uwdc = uw - np.mean(uw)
+                fftuwdc = np.fft.fft(uwdc, n=NFFT) / len(uwdc)
+                N = int(len(fftuw)/2)
+                frpm = np.arange(N) / NFFT / T * 60
+                axs[1,2].plot(frpm[1:N], 20*np.log10(np.abs(fftuw[1:N])))
+                axs[1,2].plot(frpm[1:N], 20*np.log10(np.abs(fftuwdc[1:N])), linestyle='--')
+                axs[1,2].set_title("FFT of Unwrapped Phase")
+                axs[1,2].set_ylabel("Amplitude (dB)")
+                axs[1,2].set_xlabel("Frequency (RPM)")
+                
+                
+            
+                
+                
+            
+                        
+            
+            
+            for ax in axs.flat:
+                ax.grid()
+            plt.draw()
+            plt.pause(0.1)
+            print(f'Processed frame = {ssp.config.CurrentFrame}')
+            ssp.utils.increaseCurrentFrame()
+        plt.show()
+    def run_blender_button(self):
+        ssp.environment.scenarios.ris_analysis_app_scenario()
+    def run_blender_button2(self):
+        ssp.environment.scenarios.ris_analysis_app_scenario2()
+    def run_analysis(self):
+        f0 = self.f0_lineedit.text()
+        f0 = float(f0)
+        f0 = f0 * 1e9
+        Lambda = 3e8 / f0
+        data = scipy.io.loadmat(self.linedit.text())
+        pos = data['pos']              # shape: (N, 3) if saved like that
+        a = data['a']                  # shape: (N,) or (N, 1)
+        radar_pos = data['radar_pos'] # shape: (1, 3) or (3,)
+        target_pos = data['target_pos'] # shape: (1, 3) or (3,)
+        d1=radar_pos - pos
+        d10=np.linalg.norm(d1, axis=1)
+        Ng = int(self.ng_lineedit.text())
+        arc = self.arc_lineedit.text().split(",")
+        if len(arc) != 2:
+            QMessageBox.warning(self, "Input Error", "Please enter d(Wavelength),Arc(deg) in the format: d,Arc")
+            return
+        d_grid = float(arc[0]) * Lambda
+        arc = float(arc[1])
+        resg = d_grid * Lambda
+        pos_o = []
+        for i in range(-Ng,Ng):
+            for j in range(-Ng,Ng):
+                x = i * resg
+                y = j * resg
+                z = 0
+                target_pos_i = target_pos + np.array([x, y, z])
+                d2=target_pos_i - pos
+                d = d10 + np.linalg.norm(d2, axis=1)
+                phase = -2 * np.pi / Lambda * d
+                a0 =  np.exp(1j * phase)
+                pc = a * a0
+                o = np.abs(np.sum(pc))
+                pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
+        for i in range(-Ng,Ng):
+            for j in range(-Ng,Ng):
+                x = i * resg
+                z = j * resg
+                y = 0
+                target_pos_i = target_pos + np.array([x, y, z])
+                d2=target_pos_i - pos
+                d = d10 + np.linalg.norm(d2, axis=1)
+                phase = -2 * np.pi / Lambda * d
+                a0 =  np.exp(1j * phase)
+                pc = a * a0
+                o = np.abs(np.sum(pc))
+                pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
+        for i in range(-Ng,Ng):
+            for j in range(-Ng,Ng):
+                z = i * resg
+                y = j * resg
+                x = 0
+                target_pos_i = target_pos + np.array([x, y, z])
+                d2=target_pos_i - pos
+                d = d10 + np.linalg.norm(d2, axis=1)
+                phase = -2 * np.pi / Lambda * d
+                a0 =  np.exp(1j * phase)
+                pc = a * a0
+                o = np.abs(np.sum(pc))
+                pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
+        pos_o = np.array(pos_o)
+
+        # Plotting
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot radar and target
+        ax.plot([radar_pos[0,0]], [radar_pos[0,1]], [radar_pos[0,2]], 'ro', markersize=10, label='Radar Position')
+        ax.plot([target_pos[0,0]], [target_pos[0,1]], [target_pos[0,2]], 'bo', markersize=10, label='Target Position')
+
+        # Plot antennas
+        ax.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]), c='g', s=10, label='Antenna Elements')
+
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_zlabel('Z [m]')
+        ax.legend()
+        ax.set_title('Radar, Target, and Antenna Elements')
+        self.set_axes_equal(ax)
+
+        phases = np.degrees(np.angle(a))
+
+        # Plot antennas colored by phase
+        fig2 = plt.figure(figsize=(10,10))
+        ax2 = fig2.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        sc = ax2.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]),
+                        c=phases, cmap='hsv', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        cbar.set_label('Phase (radians)')
+
+        ax2.set_xlabel('X [m]')
+        ax2.set_ylabel('Y [m]')
+        ax2.set_zlabel('Z [m]')
+        ax2.set_title('Antenna Element Phases')
+        ax2.legend()
+        self.set_axes_equal(ax2)
+
+        fig3 = plt.figure(figsize=(10,10))
+        ax3 = fig3.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        dynr = float(self.dynr_lineedit.text())
+        co = 40*np.log10(pos_o[:, 3])
+        lim = co.max() - dynr
+        co[co < lim] = lim
+        sc = ax3.scatter(np.real(pos_o[:, 0]), np.real(pos_o[:, 1]), np.real(pos_o[:, 2]),
+                        c=co, cmap='viridis', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        # cbar.set_label('Phase (radians)')
+
+        ax3.set_xlabel('X [m]')
+        ax3.set_ylabel('Y [m]')
+        ax3.set_zlabel('Z [m]')
+        # ax2.set_title('Antenna Element Phases')
+        # ax2.legend()
+        self.set_axes_equal(ax3)
+
+
+        fig4 = plt.figure(figsize=(10,10))
+        ax4 = fig4.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        sc = ax4.scatter(np.real(pos_o[:, 0]), np.real(pos_o[:, 1]), np.real(pos_o[:, 2]),
+                        c=co, cmap='viridis', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        # cbar.set_label('Phase (radians)')
+        ax4.plot([radar_pos[0,0]], [radar_pos[0,1]], [radar_pos[0,2]], 'ro', markersize=10, label='Radar Position')
+        ax4.plot([target_pos[0,0]], [target_pos[0,1]], [target_pos[0,2]], 'bo', markersize=10, label='Target Position')
+
+        ax4.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]), c='g', s=10, label='Antenna Elements')
+
+        ax4.set_xlabel('X [m]')
+        ax4.set_ylabel('Y [m]')
+        ax4.set_zlabel('Z [m]')
+        # ax2.set_title('Antenna Element Phases')
+        # ax2.legend()
+        self.set_axes_equal(ax4)
+        
+        posMean = np.mean(pos, axis=0).reshape(1, 3)
+        dir = target_pos - posMean
+        radius, azimuth, elevation = ssp.utils.cart2sph(dir[0,0], dir[0,1], dir[0,2])
+        resg = np.deg2rad(arc)/Ng
+        pos_o = []
+        for i in range(-Ng,Ng):
+            for j in range(-Ng,Ng):
+                azimuth_i = i * resg + azimuth
+                elevation_j = j * resg + elevation
+                x,y,z=ssp.utils.sph2cart(radius, azimuth_i, elevation_j)
+                target_pos_i = posMean + np.array([x, y, z])
+                d2=target_pos_i - pos
+                d = d10 + np.linalg.norm(d2, axis=1)
+                phase = -2 * np.pi / Lambda * d
+                a0 =  np.exp(1j * phase)
+                pc = a * a0
+                o = np.abs(np.sum(pc))
+                pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
+        pos_o = np.array(pos_o)
+        fig3 = plt.figure(figsize=(10,10))
+        ax3 = fig3.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        
+        co = 40*np.log10(pos_o[:, 3])
+        lim = co.max() - dynr
+        co[co < lim] = lim
+        sc = ax3.scatter(np.real(pos_o[:, 0]), np.real(pos_o[:, 1]), np.real(pos_o[:, 2]),
+                        c=co, cmap='viridis', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        # cbar.set_label('Phase (radians)')
+
+        ax3.set_xlabel('X [m]')
+        ax3.set_ylabel('Y [m]')
+        ax3.set_zlabel('Z [m]')
+        # ax2.set_title('Antenna Element Phases')
+        # ax2.legend()
+        self.set_axes_equal(ax3)
+
+
+        fig4 = plt.figure(figsize=(10,10))
+        ax4 = fig4.add_subplot(111, projection='3d')
+        # scatter with phase colormap
+        sc = ax4.scatter(np.real(pos_o[:, 0]), np.real(pos_o[:, 1]), np.real(pos_o[:, 2]),
+                        c=co, cmap='viridis', s=20)
+
+        # colorbar to show mapping from phase to color
+        cbar = plt.colorbar(sc, pad=0.1, shrink=0.7)
+        # cbar.set_label('Phase (radians)')
+        ax4.plot([radar_pos[0,0]], [radar_pos[0,1]], [radar_pos[0,2]], 'ro', markersize=10, label='Radar Position')
+        ax4.plot([target_pos[0,0]], [target_pos[0,1]], [target_pos[0,2]], 'bo', markersize=10, label='Target Position')
+
+        ax4.scatter(np.real(pos[:, 0]), np.real(pos[:, 1]), np.real(pos[:, 2]), c='g', s=10, label='Antenna Elements')
+
+        ax4.set_xlabel('X [m]')
+        ax4.set_ylabel('Y [m]')
+        ax4.set_zlabel('Z [m]')
+        # ax2.set_title('Antenna Element Phases')
+        # ax2.legend()
+        self.set_axes_equal(ax4)
+        
+        plt.show()
+    
+    def set_axes_equal(self, ax):
+        x_limits = ax.get_xlim3d()
+        y_limits = ax.get_ylim3d()
+        z_limits = ax.get_zlim3d()
+        x_range = abs(x_limits[1] - x_limits[0])
+        y_range = abs(y_limits[1] - y_limits[0])
+        z_range = abs(z_limits[1] - z_limits[0])
+        max_range = max(x_range, y_range, z_range)
+        x_middle = np.mean(x_limits)
+        y_middle = np.mean(y_limits)
+        z_middle = np.mean(z_limits)
+        ax.set_xlim3d([x_middle - max_range / 2, x_middle + max_range / 2])
+        ax.set_ylim3d([y_middle - max_range / 2, y_middle + max_range / 2])
+        ax.set_zlim3d([z_middle - max_range / 2, z_middle + max_range / 2])
+
+
+        
 class FMCWApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -609,9 +1208,266 @@ class RadarConfigApp(QMainWindow):
         self.saveSignalGenerationTimeCheckBox.setChecked(self.radar_parameters["SaveSignalGenerationTime"])
         self.continuousCpiCheckBox.setChecked(self.radar_parameters["continuousCPIsTrue_oneCPIpeerFrameFalse"])
 
+class PatchAntennaPatternApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Patch Antenna Segment Visualizer")
+        self._init_ui()
+
+    def _init_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        vbox = QVBoxLayout(central)
+
+        # --- Table + Buttons ---
+        hbox = QHBoxLayout()
+        vbox.addLayout(hbox)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["W", "H", "d"])
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        hbox.addWidget(self.table)
+
+        
+        btn_layout = QVBoxLayout()
+        hbox.addLayout(btn_layout)
+        add_btn = QPushButton("Add Segment")
+        add_btn.clicked.connect(self.add_row)
+        btn_layout.addWidget(add_btn)
+
+        del_btn = QPushButton("Remove Selected")
+        del_btn.clicked.connect(self.remove_selected_rows)
+        btn_layout.addWidget(del_btn)
+
+        draw_btn = QPushButton("Draw")
+        draw_btn.clicked.connect(self.draw_segments)
+        btn_layout.addWidget(draw_btn)
+        def1_btn = QPushButton("Patch 10 Segments")
+        def1_btn.clicked.connect(self.def1)
+        btn_layout.addWidget(def1_btn)
+        def2_btn = QPushButton("Patch 3 Segments IWR6843ISK")
+        def2_btn.clicked.connect(self.def2)
+        btn_layout.addWidget(def2_btn)
+        def3_btn = QPushButton("Patch single Segment")
+        def3_btn.clicked.connect(self.def3)
+        btn_layout.addWidget(def3_btn)
+        btn_layout.addStretch()
+
+        freq_layout = QHBoxLayout()
+        freq_label = QLabel("Center Frequency:")
+        self.freq_input = QDoubleSpinBox()
+        self.freq_input.setRange(1, 1000)            # 1 GHz to 1000 GHz
+        self.freq_input.setValue(77)                  # default 77 GHz
+        self.freq_input.setSuffix(" GHz")
+        freq_layout.addWidget(freq_label)
+        freq_layout.addWidget(self.freq_input)
+        vbox.addLayout(freq_layout)
+
+        # --- Graphics View ---
+        self.view = QGraphicsView()
+        self.scene = QGraphicsScene(self)
+        self.view.setScene(self.scene)
+        vbox.addWidget(self.view, 1)
+        
+        # self.def1()  # Initialize with default values
+    def def1(self):
+        # Clear the table and add default values
+        self.freq_input.setValue(77)
+        self.table.setRowCount(0)
+        for _ in range(10):
+            self.add_row()
+        # Set default values for the first row
+        self.table.setItem(0, 0, QTableWidgetItem("1"))
+        self.table.setItem(0, 1, QTableWidgetItem("3"))
+        self.table.setItem(0, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(1, 0, QTableWidgetItem("2"))
+        self.table.setItem(1, 1, QTableWidgetItem("3"))
+        self.table.setItem(1, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(2, 0, QTableWidgetItem("4"))
+        self.table.setItem(2, 1, QTableWidgetItem("3"))
+        self.table.setItem(2, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(3, 0, QTableWidgetItem("5"))
+        self.table.setItem(3, 1, QTableWidgetItem("3"))
+        self.table.setItem(3, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(4, 0, QTableWidgetItem("6"))
+        self.table.setItem(4, 1, QTableWidgetItem("4"))
+        self.table.setItem(4, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(5, 0, QTableWidgetItem("6"))
+        self.table.setItem(5, 1, QTableWidgetItem("3"))
+        self.table.setItem(5, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(6, 0, QTableWidgetItem("5"))
+        self.table.setItem(6, 1, QTableWidgetItem("3"))
+        self.table.setItem(6, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(7, 0, QTableWidgetItem("4"))
+        self.table.setItem(7, 1, QTableWidgetItem("3"))
+        self.table.setItem(7, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(8, 0, QTableWidgetItem("2"))
+        self.table.setItem(8, 1, QTableWidgetItem("3"))
+        self.table.setItem(8, 2, QTableWidgetItem("7.79"))
+
+        self.table.setItem(9, 0, QTableWidgetItem("1"))
+        self.table.setItem(9, 1, QTableWidgetItem("3"))
+        self.table.setItem(9, 2, QTableWidgetItem("7.79"))
+        
+        scale_factor = 2.0
+        self.view.setTransform(QTransform().scale(scale_factor, scale_factor))
+        self.draw_segments()  # Draw the segments with default values
+    def def2(self):
+        self.freq_input.setValue(62)
+        # Clear the table and add default values
+        self.table.setRowCount(0)
+        for _ in range(3):
+            self.add_row()
+        # Set default values for the first row
+        self.table.setItem(0, 0, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(0, 1, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(0, 2, QTableWidgetItem(str(round(34/34.0 * 300/62 *.5,2))))
+        
+        self.table.setItem(1, 0, QTableWidgetItem(str(round(22/34.0 * 300/62 *.5,2))))
+        self.table.setItem(1, 1, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(1, 2, QTableWidgetItem(str(round(34/34.0 * 300/62 *.5,2))))
+        
+        self.table.setItem(2, 0, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(2, 1, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(2, 2, QTableWidgetItem(str(round(34/34.0 * 300/62 *.5,2))))
+
+        
+        scale_factor = 16.0
+        self.view.setTransform(QTransform().scale(scale_factor, scale_factor))
+        self.draw_segments()  # Draw the segments with default values
+    def def3(self):
+        self.freq_input.setValue(62)
+        # Clear the table and add default values
+        self.table.setRowCount(0)
+        for _ in range(1):
+            self.add_row()
+        # Set default values for the first row
+        self.table.setItem(0, 0, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(0, 1, QTableWidgetItem(str(round(15/34.0 * 300/62 *.5,2))))
+        self.table.setItem(0, 2, QTableWidgetItem(str(round(34/34.0 * 300/62 *.5,2))))
+        
+        
+        scale_factor = 16.0
+        self.view.setTransform(QTransform().scale(scale_factor, scale_factor))
+        self.draw_segments()  # Draw the segments with default values
+    def add_row(self):
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        # Optional: default values
+        for col, default in enumerate(("10", "10", "2")):
+            self.table.setItem(row, col, QTableWidgetItem(default))
+
+    def remove_selected_rows(self):
+        for idx in sorted({i.row() for i in self.table.selectedItems()}, reverse=True):
+            self.table.removeRow(idx)
+
+    def draw_segments(self):
+        self.scene.clear()
+        # read data
+        segments = []
+        for row in range(self.table.rowCount()):
+            try:
+                W = float(self.table.item(row, 0).text())
+                H = float(self.table.item(row, 1).text())
+                d = float(self.table.item(row, 2).text())
+                segments.append((H, W, d))
+            except Exception:
+                continue
+
+        # start drawing from y = 0
+        y = 0
+        f0 = self.freq_input.value()  # Get the center frequency, not used in drawing but can be used for further calculations
+        Lambda = 3e8 / (f0 * 1e9)
+        # find max width for centering
+        maxW = max((W for _,W,_ in segments), default=0)
+        ad = []
+        pen = QPen(Qt.black)
+        pen.setWidth(0)
+        for H, W, d in segments:
+            # center rectangle around x=0
+            x = -W/2
+            rect = QGraphicsRectItem(QRectF(x, y, W, H))
+            rect.setPen(pen)  # default pen
+            self.scene.addItem(rect)
+            ad.append((np.sqrt(W*H),y/1000.0/Lambda,W/1000.0/Lambda,H/1000.0/Lambda))
+            y += d
+        
+        spine = QGraphicsLineItem(0, 0, 0, y)
+
+        spine.setPen(pen)
+        self.scene.addItem(spine)
+
+        # adjust scene rect so all items are visible
+        self.scene.setSceneRect(-maxW, 0, 2*maxW, y + 10)
+
+        elevation = np.linspace(-90, 90, 1000)
+        # Calculate the antenna pattern
+        pattern = np.zeros_like(elevation)
+        ad = np.array(ad)
+        for i,el in enumerate(elevation):
+            pa = patch_pattern(0,el,ad[:,2],ad[:,3])
+            # print(el,pa)
+            sv = pa*ad[:, 0] * np.exp(-1j * 2 * np.pi * ad[:, 1] * np.sin(np.radians(el)) )
+            pattern[i] = np.abs(np.sum(sv))**2
+
+        import matplotlib
+        matplotlib.use("Qt5Agg") 
+        plt.figure(figsize=(10, 5))
+        plt.plot(elevation, 10 * np.log10(pattern / np.max(pattern)), label='Antenna Pattern')
+        plt.title('Antenna Pattern')
+        plt.xlabel('Elevation Angle (degrees)')
+        plt.ylabel('Normalized Power (dB)')
+        plt.grid()
+        plt.ylim(-30, 2)
+        # plt.legend()
+        # az = np.linspace(-90, 90, 1000)
+        # pattern = np.zeros_like(az)
+        # for i,a in enumerate(az):
+        #     pa = patch_pattern(a,0,ad[:,2],ad[:,3])
+        #     sv = pa
+        #     pattern[i] = np.abs(np.sum(sv))**2
+        # plt.figure(figsize=(10, 5))
+        # plt.plot(az, 10 * np.log10(pattern / np.max(pattern)), label='Antenna Pattern')
+        # plt.title('Antenna Pattern')
+        # plt.xlabel('Azimuth Angle (degrees)')
+        # plt.ylabel('Normalized Power (dB)')
+        # plt.grid()
+        # plt.ylim(-30, 2)
+        
+        
+        plt.show()
+
+def patch_pattern(azimuth_deg, elevation_deg, Waz_per_lambda, Hel_per_lambda):
+    theta = np.radians(elevation_deg)
+    phi = np.radians(azimuth_deg)
+
+    # Argument for sinc: sin(x)/x where x = (π * W/λ) * sinθ sinφ
+    x = np.pi * Waz_per_lambda * np.sin(theta) * np.sin(phi)
+    sinc_term = np.sinc(x / np.pi)  # sinc(x) = sin(x)/x
+
+    # Cosine factor from slot separation
+    cos_term = np.cos(np.pi * Hel_per_lambda * np.sin(theta) * np.cos(phi))
+
+    # Normalized field (magnitude only)
+    E = sinc_term * cos_term
+    E_norm = np.abs(E) / np.max(np.abs(E))  # Normalize to 1
+
+    return E
 def appselect(st):
     if st=="FMCW Chirp Parameters Calculator":
         runfmcwchirpapp()
+    if st=="RIS Analysis":
+        runRISAnalysisapp()
+    if st=="Patch(microstrip) Antenna Pattern":
+        runradarPatchAntennaPatternapp()
     if st=="Radar Parameters":
         runradarconfigapp()       
     if st=="Hand Gesture MisoCNN":
@@ -633,7 +1489,14 @@ def runfmcwchirpapp():
     window = FMCWApp()
     window.show()
     app.exec_()  # Do not use sys.exit()
-
+def runRISAnalysisapp():
+    app = QApplication.instance()  # Check if an instance already exists
+    if not app:  # If no instance exists, create one
+        app = QApplication(sys.argv)
+    app.setStyleSheet(ssp.config.appSTYLESHEET)
+    window = RISAnalysisApp()
+    window.show()
+    app.exec_()  # Do not use sys.exit()
 def runradarconfigapp():
     app = QApplication.instance()  # Check if an instance already exists
     if not app:  # If no instance exists, create one
@@ -643,6 +1506,13 @@ def runradarconfigapp():
     window.show()
     app.exec_()  # Do not use sys.exit()
 
-
+def runradarPatchAntennaPatternapp():
+    app = QApplication.instance()  # Check if an instance already exists
+    if not app:  # If no instance exists, create one
+        app = QApplication(sys.argv)
+    app.setStyleSheet(ssp.config.appSTYLESHEET)
+    window = PatchAntennaPatternApp()
+    window.show()
+    app.exec_()  # Do not use sys.exit()
 
 

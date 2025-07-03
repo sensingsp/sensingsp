@@ -57,11 +57,13 @@ class Config():
             ]
         self.apps =[
                 ('FMCW Chirp Parameters Calculator', "FMCW Chirp Calculator", "FMCW Chirp Parameters Calculator"),
+                ('RIS Analysis', "RIS Analysis", "RIS Analysis"),
                 ('Radar Parameters', "Radar Parameters", "Radar Parameters"),
                 ('Hand Gesture MisoCNN', "Hand Gesture MisoCNN", "Hand Gesture MisoCNN"),
                 ('Human Health Monitoring', "Human Health Monitoring", "Human Health Monitoring"),
                 ('GAN Radar Waveforms', "GAN Radar Waveforms", "GAN Radar Waveforms"),
                 ('SHARP Wifi Sensing', "SHARP Wifi Sensing", "SHARP Wifi Sensing"),
+                ('Patch(microstrip) Antenna Pattern', "Patch(microstrip) Antenna Pattern", "Patch(microstrip) Antenna Pattern"),
             ]
         self.radars =[
                 ('TI AWR 1642 (2TX-4RX)', "TI AWR 1642 (2TX-4RX)", "TI AWR 1642 (2TX-4RX)"),
@@ -80,6 +82,7 @@ class Config():
                 ('2 Cubes + 6843', "2 Cubes + 6843", "2 Cubes moving"),
                 ('Hand Gesture + 1642', "Hand Gesture + 1642", "Hand Gesture + 1642"),
                 ('Hand Gesture + 3 Xethru Nature paper', "Hand Gesture + 3 Xethru Nature paper", "Hand Gesture + 3 Xethru Nature paper"),
+                ('Altos Radar', "Altos Radar", "Altos Radar"),
                 ('Pattern SISO', "Pattern SISO", "Pattern SISO"),
                 ('Ray Tracing 1', "Ray Tracing 1", "Ray Tracing 1"),
                 ('Ray Tracing 2', "Ray Tracing 2", "Ray Tracing 2"),
@@ -106,9 +109,10 @@ class Config():
                 ('Load Hub Environment', "Load Hub Environment", "Load Hub Environment"),
                 ('Environment information', "Environment information", "Environment information"),
                 ('SensingSP Version', "SensingSP Version", "SensingSP Version"),
+                ('Array Visualization', "Array Visualization", "Array Visualization"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
-        self.myglobal_outsidedefined_RIS = []
+        self.myglobal_outsidedefined_RIS = None
         self.appSTYLESHEET = """
             /* General */
             QWidget {

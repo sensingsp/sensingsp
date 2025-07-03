@@ -1260,6 +1260,97 @@ def predefined_array_configs_SISO(isuite, iradar, location, rotation, f0=70e9,Pu
     empty["TXRXPos"]=[tx_positions,rx_positions]
     return empty
 
+
+def predefined_array_configs_ALTOS_V1(isuite, iradar, location, rotation, f0=70e9):
+    Lambda = LightSpeed / f0
+    Suitename = f'SuitePlane_{isuite}'
+    Suite_obj = bpy.data.objects[Suitename]
+
+    bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=location, rotation=rotation, scale=(1, 1, 1))
+    empty = bpy.context.object
+    empty.name = f'RadarPlane_{isuite}_{iradar}_{0}'
+    empty.parent = Suite_obj
+    empty = setDefaults(empty,f0)
+
+    s = 0.05
+    Type = 'SPOT'
+    YSpace = 1
+    tx_positions = [
+        (0, 0),
+        (-4, 0),
+        (-8, 0),
+        (-12, 0),
+        (0, 4*YSpace),
+        (-4, 4*YSpace),
+        (-8, 4*YSpace),
+        (-12, 4*YSpace),
+        (0, 8*YSpace),
+        (-4, 8*YSpace),
+        (-8, 8*YSpace),
+        (-12, 8*YSpace)
+    ]
+
+    for i, pos in enumerate(tx_positions):
+        bpy.ops.object.light_add(type=Type, radius=1, location=(pos[0]*Lambda/2, pos[1]*Lambda/2, 0))
+        tx = bpy.context.object
+        tx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+        tx.name = f'TX_{isuite}_{iradar}_{1}_{0}_{i+1:05}'
+        tx.parent = empty
+
+    bx0 = -5
+    bx = bx0
+    by = -5
+    s = 1
+
+    rx_positions = [
+        (0, 0),
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (0, 1*YSpace),
+        (1, 1*YSpace),
+        (2, 1*YSpace),
+        (3, 1*YSpace),
+        (0, 2*YSpace),
+        (1, 2*YSpace),
+        (2, 2*YSpace),
+        (3, 2*YSpace),
+        (0, 3*YSpace),
+        (1, 3*YSpace),
+        (2, 3*YSpace),
+        (3, 3*YSpace),
+    ]
+
+    for i, pos in enumerate(rx_positions):
+        bpy.ops.object.camera_add(location=( -(bx+pos[0])*Lambda/2, (by+pos[1])*Lambda/2, 0), rotation=(0, 0, 0))
+        rx = bpy.context.object
+        rx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+        rx.name = f'RX_{isuite}_{iradar}_{1}_{0}_{i+1:05}'
+        rx.parent = empty
+        rx.data.lens = 10
+    
+
+    empty["TXRXPos"]=[tx_positions,rx_positions]
+    # p2y,p2z=[],[]
+    # Mz = 3
+    # My = 4
+    # Nz = 4
+    # Ny = 4
+    # for imy in range(My):
+    #     for imz in range(Mz):
+    #         for iny in range(Ny):
+    #             for inz in range(Nz):
+    #                 p2z.append(inz+imz*Nz)
+    #                 p2y.append(iny+imy*Ny)
+    M = len(tx_positions)
+    N = len(rx_positions)
+    virt = [ (-tx_positions[m][0]+rx_positions[n][0],
+            tx_positions[m][1]+rx_positions[n][1])
+            for m in range(M) for n in range(N) ]
+    xs = sorted({x for x,y in virt})
+    ys = sorted({y for x,y in virt})
+    empty["antenna2azelIndex"]=[xs,ys]
+    return empty
 def predefined_array_configs_infineon_BGT60UTR11AIP(isuite, iradar, location, rotation, f0=60e9):  
     Lambda = LightSpeed / f0
     Suitename = f'SuitePlane_{isuite}'

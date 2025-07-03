@@ -41,6 +41,8 @@ def add_scenario(st):
 
     if st=='2 Cubes + 6843':
         predefine_movingcube_6843()
+    if st=='Pulse Radar':
+        predefine_pulse_radar()
     if st=='Wifi Sensing':
         predefine_wifi_sensing()
     if st == 'Pattern SISO':
@@ -51,7 +53,9 @@ def add_scenario(st):
         
     if st == "Hand Gesture + 3 Xethru Nature paper":
         predefine_Hand_Gesture_3Xethru_Nature_paper()
-        
+    if st == "Altos Radar":
+        predefine_Altos_Radar()
+    
     if st == 'Ray Tracing 1':
         ssp.utils.delete_all_objects()
         ssp.utils.define_settings()
@@ -309,19 +313,34 @@ def sim_scenario(st):
                 pat.append(0)
             ssp.utils.increaseCurrentFrame()
         f=np.array([x[0] for x in pat])
-        p=np.array([x[1] for x in pat])
+        p=np.array([x[1]**2 for x in pat])
         theta = np.arange(360)
         p/=p.max()
         plt.figure()
         plt.plot(theta,p[:360])
         plt.plot(theta[:len(p[360:])],p[360:])
+        plt.title('Antenna Pattern')
+        plt.xlabel('Azimuth Angle (degrees)')
+        plt.ylabel('Power')
+        plt.legend(['Azimuth','Elevation'])
+        plt.grid()
+        
         plt.figure()
         plt.plot(theta,20*np.log10(p[:360]))
-        plt.plot(theta[:len(p[360:])],20*np.log10(p[360:]))
+        plt.plot(theta[:len(p[360:])],10*np.log10(p[360:]))
+        plt.title('Antenna Pattern')
+        plt.xlabel('Azimuth Angle (degrees)')
+        plt.ylabel('Power (dB)')
+        plt.legend(['Azimuth','Elevation'])
+        plt.grid()
+        
+        
         plt.show()
     
     if st == 'Ray Tracing 1' or st == 'Ray Tracing 2' or st == 'Ray Tracing 3' :
-        ssp.environment.scenarios.raytracing_test()    
+        ssp.environment.scenarios.raytracing_test()
+    if st == 'Pulse Radar':
+        processing_pulse_radar()    
     if st == 'Wifi Sensing':
         ssp.environment.scenarios.wifi_sensing()
     if st == "Hand Gesture + 3 Xethru Nature paper":
@@ -455,6 +474,198 @@ def predefine_wifi_sensing():
     radar['Fs_MHz'] = 20e6
     ssp.config.directReceivefromTX =  True
 
+def processing_pulse_radar():
+    
+    from scipy.signal import fftconvolve
+    import matplotlib
+    matplotlib.use('QT5Agg') 
+    ssp.utils.trimUserInputs()  
+    ssp.config.restart()
+    # ssp.config.DopplerProcessingMethod_FFT_Winv = (True)
+
+    # ssp.config.directReceivefromTX =  False 
+    # ssp.config.RadarRX_only_fromscatters_itsTX = True
+    # ssp.config.RadarRX_only_fromitsTX = True
+    # ssp.config.Radar_TX_RX_isolation = True
+
+    ssp.utils.useCUDA(False)
+
+    data_save = []
+    while ssp.config.run():
+        path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+        for isuite, radarSpecifications in enumerate(ssp.RadarSpecifications):
+            for iradar, specifications in enumerate(radarSpecifications):
+                PulseWaveform = specifications['PulseWaveform']
+                if PulseWaveform.startswith('waveform_'):
+                    waveform_file = PulseWaveform[len('waveform_'):]
+                    waveform = np.load(waveform_file)
+                for XRadar, timeX in Signals[isuite]['radars'][iradar]:
+                    # Range and Doppler processing
+                    # Conjugate time-reversed waveform for matched filtering
+                    matched_filter = np.conj(waveform[::-1])
+                    XRadar_filtered = np.zeros_like(XRadar, dtype=complex)
+                    for i in range(XRadar.shape[1]):  # Loop over slow-time frames
+                        for j in range(XRadar.shape[2]):  # Loop over range bins
+                            XRadar_filtered[:, i, j] = fftconvolve(XRadar[:, i, j], matched_filter, mode='same')/len(matched_filter)
+                    plt.figure()
+                    datasample = XRadar[:,:,0]
+                    datasample_MF = XRadar_filtered[:,:,0]
+                    plt.plot(np.abs(datasample[:,0]), label='Range Profile')
+                    plt.plot(np.abs(datasample_MF[:,0]), label='Matched Filtered Range Profile')
+                    plt.title(f'Range Profile for Radar {isuite}-{iradar}')
+                    plt.xlabel('Range Bins')
+                    plt.ylabel('Amplitude') 
+                    plt.legend()
+                    plt.show()
+                    
+        print(f'Processed frame = {ssp.config.CurrentFrame}')
+        ssp.utils.increaseCurrentFrame()
+
+def predefine_pulse_radar():
+    ssp.utils.delete_all_objects()
+    ssp.utils.define_settings()
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((-.14, -.5, -.1)), rotation=Vector((0, 0, np.pi/2)))
+    radar1 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9)
+    # radar2 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=1, location=Vector((1, 0,0)), rotation=Vector((np.pi/2,0, np.pi/2)), f0=76e9)
+    # radar3 = ssp.radar.utils.predefined_array_configs_SISO(isuite=0, iradar=2, location=Vector((.5, 0,.5)), rotation=Vector((0,0, 0)), f0=76e9)
+    # During data acquisition, examiners recorded a subject repeating a particular hand gesture for 450 seconds, corresponding to 9000 (slow-time) rows. There is 1 complete gesture motion in 90 slow-time frames. As such, each radar signal matrix contains 100 complete hand gesture motion samples. The range of each UWB radar is 1.2 meters, corresponding to 189 fast-time bins.
+    gesture_motion_slowTimeFrames = 90
+    recordedTimePerSample = 4.5
+    radarRange = 1.2
+    fast_time_bins = 189
+    rangebins = radarRange / fast_time_bins
+    waveform = np.complex128(ssp.radar.radarwaveforms.barker_code(11))
+    # waveform = ssp.radar.radarwaveforms.p3_code(11)
+    waveform_file = os.path.join(ssp.config.temp_folder,'waveform_pulseradar.npy')
+    np.save(waveform_file, waveform)
+    for radar in [radar1]:# ,radar2,radar3]:
+        radar['RadarMode']='Pulse'
+        # radar['PulseWaveform']='UWB'
+        radar['PulseWaveform']=f'waveform_{waveform_file}'
+
+        radar['N_ADC']  = 200
+        radar['Fs_MHz'] =  500
+        radar['RF_AnalogNoiseFilter_Bandwidth_MHz'] =  500
+        radar['PRI_us']= 70
+        radar['NPulse'] = 64
+        radar['Range_End']=100
+    FramesNumber=2
+
+
+    ssp.radar.utils.addTarget(
+        refRadar=radar1,
+        range=5, RCS0=3e2)
+
+    ssp.utils.set_RayTracing_balanced()
+    ssp.utils.set_frame_start_end(start=1,end=FramesNumber)
+    ssp.utils.save_Blender()
+def ris_analysis_app_scenario():
+    ssp.utils.initialize_environment()
+    radar = ssp.radar.utils.addRadar(radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz)
+    radar['NPulse'] = 1
+    radar['PRI_us'] = 50000
+    radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=.1
+    
+    # Add targets to the radar scenario
+    target_1 = ssp.radar.utils.addTarget(
+        refRadar=radar,
+        range=1, azimuth=0,
+        RCS0=1e10, radial_velocity=1,size=.1, shape='plane')
+    
+    target_2 = ssp.radar.utils.addTarget(
+        refRadar=radar,
+        range=.45, azimuth=0,
+        RCS0=1e-5, radial_velocity=0 ,size=.5, shape='plane')
+
+    ssp.utils.set_RayTracing_advanced_intense()
+    N1,N2=1,1
+    
+    ssp.ris.utils.add_ris(isuite=0, iris=0, location=Vector((.5, 0,.6)), rotation=Vector((0,0, np.pi/2)), f0=62e9,N1=N1,N2=N2)
+        
+    for i1 in range(N1):
+        for i2 in range(N2):
+            NF = 80
+            name = f'RIS_Element_{0}_{0}_{i1}_{i2}_{NF}'
+            ris = bpy.data.objects.get(name)
+            ris['amplitude']=1
+            ris['phase']=0
+            # if i1 == 0:
+            #     ris.location = (-D0/2, (i2-N2/2.0)*HL, 0)
+            # if i1 == 1:
+            #     ris.location = ( D0/2, (i2-N2/2.0)*HL, 0)
+    
+    configurations = [
+        ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Advanced,
+        ssp.radar.utils.RadarSignalGenerationConfigurations.CUDA_Disabled
+    ]
+    T = 10
+    endframe = int(bpy.context.scene.render.fps * T)
+    t = np.arange(endframe) / bpy.context.scene.render.fps
+    for i in range(endframe):
+        target_1[0].location = (1 + 3e-3*np.sin(2*np.pi*t[i]*18/60), 0,0)
+        target_1[0].keyframe_insert(data_path="location", frame=i+1)
+    for fcurve in target_1[0].animation_data.action.fcurves:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
+    ssp.utils.initialize_simulation(endframe=endframe)
+    ssp.utils.set_configurations(configurations)
+    ssp.utils.set_RayTracing_advanced_intense()
+    ssp.utils.set_raytracing_bounce(4)
+    ssp.utils.save_Blender()
+def ris_analysis_app_scenario2():
+    ssp.utils.initialize_environment()
+    radar = ssp.radar.utils.addRadar(radarSensor=ssp.radar.utils.RadarSensorsCategory.SISO_mmWave76GHz)
+    radar['NPulse'] = 1
+    radar['PRI_us'] = 50000
+    radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=.1
+    
+    # Add targets to the radar scenario
+    target_1 = ssp.radar.utils.addTarget(
+        refRadar=radar,
+        range=1, azimuth=0,
+        RCS0=1e10, radial_velocity=1,size=.1, shape='plane')
+    
+    target_2 = ssp.radar.utils.addTarget(
+        refRadar=radar,
+        range=.45, azimuth=0,
+        RCS0=1e-5, radial_velocity=0 ,size=.5, shape='plane')
+
+    ssp.utils.set_RayTracing_advanced_intense()
+    N1,N2=1,1
+    
+    ssp.ris.utils.add_ris(isuite=0, iris=0, location=Vector((.5, 0,.6)), rotation=Vector((0,0, np.pi/2)), f0=62e9,N1=N1,N2=N2)
+        
+    for i1 in range(N1):
+        for i2 in range(N2):
+            NF = 80
+            name = f'RIS_Element_{0}_{0}_{i1}_{i2}_{NF}'
+            ris = bpy.data.objects.get(name)
+            ris['amplitude']=1
+            ris['phase']=0
+            # if i1 == 0:
+            #     ris.location = (-D0/2, (i2-N2/2.0)*HL, 0)
+            # if i1 == 1:
+            #     ris.location = ( D0/2, (i2-N2/2.0)*HL, 0)
+    
+    configurations = [
+        ssp.radar.utils.RadarSignalGenerationConfigurations.RayTracing_Advanced,
+        ssp.radar.utils.RadarSignalGenerationConfigurations.CUDA_Disabled
+    ]
+    T = 10
+    endframe = int(bpy.context.scene.render.fps * T)
+    t = np.arange(endframe) / bpy.context.scene.render.fps
+    for i in range(endframe):
+        target_1[0].location = (1 + 3e-3*np.sin(2*np.pi*t[i]*18/60)+.5e-3*np.sin(2*np.pi*t[i]*70/60), 0,0)
+        target_1[0].keyframe_insert(data_path="location", frame=i+1)
+    for fcurve in target_1[0].animation_data.action.fcurves:
+        for keyframe in fcurve.keyframe_points:
+            keyframe.interpolation = 'LINEAR'
+    ssp.utils.initialize_simulation(endframe=endframe)
+    ssp.utils.set_configurations(configurations)
+    ssp.utils.set_RayTracing_advanced_intense()
+    ssp.utils.set_raytracing_bounce(4)
+    ssp.utils.save_Blender()
 def predefine_movingcube_6843(interpolation_type='LINEAR'):
     #     Blender provides several interpolation types, and as of recent versions, there are 6 main interpolation options:
 
@@ -883,6 +1094,7 @@ def raytracing_test():
                                     
         ssp.utils.increaseCurrentFrame()
         break
+    ssp.utils.save_Blender()
 
 def processing_HandGesture1642():
     ssp.utils.trimUserInputs()  
@@ -1039,7 +1251,39 @@ def update_pointclouds(all_pcs,ax):
     ax.set_xlabel('Frame')
     ax.set_zlabel('Y')
     ax.set_xlim([0,30])
-    
+
+def predefine_Altos_Radar():
+    ssp.utils.delete_all_objects()
+    r, azimuth, elevatio = 4, np.deg2rad(0), np.deg2rad(30)
+    x,y,z = ssp.utils.sph2cart(r, azimuth, elevatio)
+    cubex = ssp.environment.add_cube(location=Vector((x,y,z)), direction=Vector((1,0, 0)), scale=Vector((.02, .02, .02)), subdivision=0)
+    cubex["RCS0"]=10
+    # cube = ssp.environment.add_cube(location=Vector((5, 2, 0)), direction=Vector((1, 0, 0)), scale=Vector((.02, .02, .02)), subdivision=0)
+    # cube["RCS0"]=40
+    # cube.location = (4,0,0)
+    # cube.keyframe_insert(data_path="location", frame=1)
+    # cube.location = (4, 3,0)
+    # cube.keyframe_insert(data_path="location", frame=30)
+    # cube.location = (4, -3,0)
+    # cube.keyframe_insert(data_path="location", frame=100)
+    # for fcurve in cube.animation_data.action.fcurves:
+    #     for keyframe in fcurve.keyframe_points:
+    #         keyframe.interpolation = 'LINEAR'
+    ssp.utils.define_settings()
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    radar = ssp.radar.utils.predefined_array_configs_ALTOS_V1(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=77e9)
+    # ssp.radar.utils.predefined_array_configs_ALTOS_V1(isuite=0, iradar=1, location=Vector((10, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=77e9)
+    radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=20
+    radar['DopplerProcessingMIMODemod']='Simple'
+    radar['ADC_levels']=256*8
+    radar['RangeFFT_OverNextP2']=1
+    radar['DopplerFFT_OverNextP2']=1
+    radar['AzFFT_OverNextP2']=5
+    radar['Range_End']=20 
+    ssp.utils.set_frame_start_end(start=1,end=40)
+    ssp.utils.useCUDA()
+    ssp.utils.trimUserInputs() 
+    ssp.config.restart()
 def predefine_Hand_Gesture_3Xethru_Nature_paper():
     addfile = os.path.join(ssp.config.temp_folder,'assets/HandGest/up_down_swipe.blend')
     addfile = ssp.utils.hub.fetch_file("animation","Hand")

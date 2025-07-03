@@ -309,6 +309,9 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
                         FMCWRadar = 0
                         PulseWaveform = ssp.RadarSpecifications[isrx][irrx]['PulseWaveform']
                         Waveform = ssp.radar.radarwaveforms.barker_code(11)
+                        if PulseWaveform.startswith('waveform_'):
+                          waveform_file = PulseWaveform[len('waveform_'):]
+                          Waveform = np.load(waveform_file)
                         if PulseWaveform=='UWB':
                           FMCWRadar = 100
                           Lwaveform = int(1/Ts/ssp.RadarSpecifications[isrx][irrx]['RF_AnalogNoiseFilter_Bandwidth'])
@@ -2164,3 +2167,154 @@ def SensorsSignalProccessing_RIS_Included_Probe(Signals,FigsAxes=None,Fig=None):
           break
   return o
           
+def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler_2D(Signals,FigsAxes=None,Fig=None):
+  # RangeDopplerDistributed = []
+
+  bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1))
+  empty = bpy.context.object
+  empty.name = f'Detection Cloud'
+  for isuite,radarSpecifications in enumerate(ssp.RadarSpecifications):
+      for iradar,specifications in enumerate(radarSpecifications):
+        FMCW_ChirpSlobe = specifications['FMCW_ChirpSlobe']
+        Ts = specifications['Ts']
+        PRI = specifications['PRI']
+        PrecodingMatrix = specifications['PrecodingMatrix']
+        RadarMode = specifications['RadarMode']
+        for XRadar,timeX in Signals[isuite]['radars'][iradar]:
+          fast_time_window = scipy.signal.windows.hamming(XRadar.shape[0])
+          X_windowed_fast = XRadar * fast_time_window[:, np.newaxis, np.newaxis]
+
+          NFFT_Range_OverNextPow2 =  specifications['RangeFFT_OverNextP2']
+          NFFT_Range = int(2 ** (np.ceil(np.log2(XRadar.shape[0]))+NFFT_Range_OverNextPow2))
+          X_fft_fast = np.fft.fft(X_windowed_fast, axis=0, n=NFFT_Range)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+          d_fft = np.arange(NFFT_Range) * LightSpeed / 2 / FMCW_ChirpSlobe / NFFT_Range / Ts
+          Range_Start = specifications['Range_Start']
+          Range_End = specifications['Range_End']
+          d1i = int(X_fft_fast.shape[0]*Range_Start/100.0)
+          d2i = int(X_fft_fast.shape[0]*Range_End/100.0)
+          d_fft = d_fft[d1i:d2i]
+          X_fft_fast = X_fft_fast[d1i:d2i,:,:] 
+          test1,test2 = np.min(np.abs(X_fft_fast)),np.max(np.abs(X_fft_fast))
+          M_TX=PrecodingMatrix.shape[1]#specifications['M_TX']
+          L = X_fft_fast.shape[1]
+          Leff = int(L/M_TX)
+          
+          rangePulseTXRX = np.zeros((X_fft_fast.shape[0], Leff, M_TX, X_fft_fast.shape[2]),dtype=complex)
+          for ipulse in range(Leff):
+            ind = ipulse*M_TX
+            rangePulseTXRX[:,ipulse,:,:]=X_fft_fast[:,ind:ind+M_TX,:]
+          NFFT_Doppler_OverNextPow2=0
+          NFFT_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
+          rangeDopplerTXRX = np.fft.fft(rangePulseTXRX, axis=1, n=NFFT_Doppler)
+          rangeDopplerTXRX = np.fft.fftshift(rangeDopplerTXRX,axes=1)
+          f_Doppler = np.linspace(0,1/PRI/M_TX,NFFT_Doppler)
+          
+          
+          test1_1,test2_1 = np.min(np.abs(rangeDopplerTXRX)),np.max(np.abs(rangeDopplerTXRX))
+          
+          rangeTXRX = np.zeros((rangeDopplerTXRX.shape[0],rangeDopplerTXRX.shape[2],rangeDopplerTXRX.shape[3]),dtype=rangeDopplerTXRX.dtype)
+          rangeDoppler4CFAR = np.mean(np.abs(rangeDopplerTXRX),axis=(2,3))
+          rangeDoppler4CFAR -= np.min(rangeDoppler4CFAR)
+          # rangeDoppler4CFAR = np.abs(np.mean(rangeDopplerTXRX,axis=(2,3)))
+          # rangeDoppler4CFAR = np.abs(rangeDopplerTXRX[:,:,0,0])
+          test1_2,test2_2 = np.min(np.abs(rangeDoppler4CFAR)),np.max(np.abs(rangeDoppler4CFAR))
+          all_xyz=[]
+          CUDA_signalGeneration_Enabled = bpy.data.objects["Simulation Settings"]["CUDA SignalGeneration Enabled"]
+          num_train, num_guard, alpha = [25,15], [1,1], 5
+          if ssp.config.CUDA_is_available and CUDA_signalGeneration_Enabled:
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, num_train, num_guard, alpha)
+          else:
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR,num_train, num_guard, alpha)
+            # detections,cfar_threshold = ssp.radar.utils.cfar_simple_2D(1.0*rangeDoppler4CFAR, 30)
+          # fig = plt.figure(figsize=(10, 8))
+          # ax = fig.add_subplot(111, projection='3d')
+          FigsAxes[1,2].cla()
+          distance = np.linspace(d_fft[0], d_fft[-1], rangeDoppler4CFAR.shape[0])  # Replace with real distance data
+          elevation = np.linspace(f_Doppler[0],f_Doppler[-1], rangeDoppler4CFAR.shape[1])  # Replace with real angle data
+          X, Y = np.meshgrid(elevation, distance)
+          # FigsAxes[1,2].plot_surface(X, Y, 10*np.log10(rangeDoppler4CFAR), cmap='viridis', alpha=1)
+          FigsAxes[1,2].plot_surface(X, Y, (rangeDoppler4CFAR), cmap='viridis', alpha=1)
+          # FigsAxes[1,2].plot_surface(X, Y, (cfar_threshold)+0, color='yellow', alpha=1)
+          detected_points = np.where(detections == 1)
+          FigsAxes[1,2].scatter(elevation[detected_points[1]], distance[detected_points[0]], 
+                      (rangeDoppler4CFAR[detected_points]), color='red', s=20, label='Post-CFAR Point Cloud')
+
+          # Labels and legend
+          FigsAxes[1,2].set_xlabel('Doppler (Hz)')
+          FigsAxes[1,2].set_ylabel('Distance (m)')
+          FigsAxes[1,2].set_zlabel('Magnitude (normalized, dB)')
+          # FigsAxes[1,2].xaxis.set_visible(False)
+          # FigsAxes[1,2].yaxis.set_visible(False)
+          # FigsAxes[1,2].zaxis.set_visible(False)
+          # break
+          # FigsAxes[1,2].legend()
+          # plt.show()
+          NDetection = detected_points[0].shape[0]
+          # rows = unique_PosIndex[:,2].astype(int)
+          # cols = unique_PosIndex[:,3].astype(int)
+          
+          i_list, j_list = ssp.radar.utils.mimo.mimo_antenna_order(specifications)
+          Lambda = 1.0
+          dy = .5*Lambda
+          dz = .5*Lambda
+          
+          for id in range(NDetection):
+            
+            rangeTarget = d_fft[detected_points[0][id]]
+            dopplerTarget = f_Doppler[detected_points[1][id]]
+            
+            antennaSignal = rangeDopplerTXRX[detected_points[0][id],detected_points[1][id],:,:]
+            rangeVA = np.zeros((np.max(i_list)+1,np.max(j_list)+1),dtype=antennaSignal.dtype)
+            rangeVA[i_list, j_list] = antennaSignal.ravel()
+            NFFT_Angle_OverNextPow2 = 1
+            NFFT_Angle = int(2 ** (np.ceil(np.log2(rangeVA.shape[0]))+NFFT_Angle_OverNextPow2))
+            NFFT_Angle_elevation = int(2 ** (np.ceil(np.log2(rangeVA.shape[1]))+NFFT_Angle_OverNextPow2))
+            AngleMap0 = np.fft.fft(rangeVA, axis=0, n=NFFT_Angle)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+            # AngleMap0 = np.fft.fftshift(AngleMap0, axes=0)
+            AngleMap = np.fft.fft(AngleMap0, axis=1, n=NFFT_Angle_elevation)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+            # AngleMap = np.fft.fftshift(AngleMap, axes=1)
+            AngleMap = np.abs(AngleMap)
+            FigsAxes[1,1].cla()
+            a = np.linspace(-1, 1, AngleMap.shape[0])
+            b = np.linspace(-1, 1, AngleMap.shape[1]) 
+            X, Y = np.meshgrid(a, b)
+            FigsAxes[1,1].plot_surface(X,Y,(AngleMap), cmap='viridis', alpha=1)
+            num_train, num_guard, alpha = [25,15], [1,1], 5
+            detections_angle,cfar_threshold_angle = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*AngleMap, num_train, num_guard, alpha)
+            detected_points_angle = np.where(detections_angle == 1)
+            FigsAxes[1,1].scatter(a[detected_points_angle[1]], b[detected_points_angle[0]], 
+                      (AngleMap[detected_points_angle]), color='red', s=20, label='Post-CFAR Point Cloud')
+            NDetection_angle = detected_points_angle[0].shape[0]
+            for id_angle in range(NDetection_angle):
+              amp = AngleMap[detected_points_angle[0][id_angle],detected_points_angle[1][id_angle]]
+              fy = (detected_points_angle[0][id_angle]+1) / AngleMap.shape[0] / dy
+              fz = (detected_points_angle[1][id_angle]+1) / AngleMap.shape[1] / dz
+              if fy > 1:
+                fy = fy - 2
+              if fz > 1:
+                fz = fz - 2
+              azhat = np.arcsin(fy / np.sqrt((1/Lambda)**2 - fz**2))
+              elhat = np.arccos(fz * Lambda)
+              elhat = np.pi/2 - elhat
+              
+              x, y, z = ssp.utils.sph2cart(rangeTarget, -azhat, -elhat)
+              all_xyz.append([x,y,z])
+              #[]
+              print(f"Detected angle: azimuth={np.degrees(azhat):.2f} degrees, elevation={np.degrees(elhat):.2f} degrees")
+              print(x,y,z)
+              
+          points = np.array(all_xyz)
+          FigsAxes[1,0].cla()
+          FigsAxes[1,0].scatter(points[:, 0], points[:, 1],points[:, 2], marker='o')  
+          FigsAxes[1,0].plot(0, 0, 0, 'o', markersize=5, color='red')
+          FigsAxes[1,0].plot([0,5], [0,0], [0,0], color='red')
+          FigsAxes[1,0].set_xlabel('X (m)')
+          FigsAxes[1,0].set_ylabel('Y (m)')
+          FigsAxes[1,0].set_zlabel('Z (m)')
+          FigsAxes[1,0].set_title("Detected Points")
+          
+            
+  if FigsAxes is not None:
+    plt.draw() 
+    plt.pause(0.1)
+    plt.gcf().canvas.flush_events() 

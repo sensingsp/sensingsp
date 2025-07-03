@@ -36,6 +36,115 @@ def plot_tiangles(Triangles):
 
 
 
+def visualize_array():
+  ssp.utils.trimUserInputs()
+  if len(ssp.RadarSpecifications) == 0:
+    return
+  if len(ssp.RadarSpecifications[0]) == 0:
+    return
+  specifications = ssp.RadarSpecifications[0][0]
+  tx = np.array([[v.x,v.y,v.z] for v in specifications['global_location_TX_RX_Center'][0]])
+  rx = np.array([[v.x,v.y,v.z] for v in specifications['global_location_TX_RX_Center'][1]])
+  MTX = tx.shape[0]
+  NRX = rx.shape[0]
+  plt.figure()
+  for i in range(len(tx)):
+      plt.plot(tx[i, 1], tx[i, 2], 'rx', label='TX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(tx[i, 1], tx[i, 2], text, fontsize=7)
+  for i in range(len(rx)):
+      plt.plot(rx[i, 1], rx[i, 2], 'b+', label='RX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(rx[i, 1], rx[i, 2], text, fontsize=7)
+  plt.gca().set_aspect('equal')
+  plt.xlabel('Y (m)')
+  plt.ylabel('Z (m)')
+  plt.legend()
+  plt.figure()
+  for i in range(len(tx)):
+      plt.plot(tx[i, 0], tx[i, 2], 'rx', label='TX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(tx[i, 0], tx[i, 2], text, fontsize=7)
+  for i in range(len(rx)):
+      plt.plot(rx[i, 0], rx[i, 2], 'b+', label='RX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(rx[i, 0], rx[i, 2], text, fontsize=7)
+  plt.gca().set_aspect('equal')
+  plt.xlabel('X (m)')
+  plt.ylabel('Z (m)')
+  plt.legend()
+  plt.figure()
+  for i in range(len(tx)):
+      plt.plot(tx[i, 0], tx[i, 1], 'rx', label='TX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(tx[i, 0], tx[i, 1], text, fontsize=7)
+  for i in range(len(rx)):
+      plt.plot(rx[i, 0], rx[i, 1], 'b+', label='RX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(rx[i, 0], rx[i, 1], text, fontsize=7)
+  plt.gca().set_aspect('equal')
+  plt.xlabel('X (m)')
+  plt.ylabel('Y (m)')
+  plt.legend()
+  
+  tx_positions,rx_positions = specifications["TXRXPos"]
+  plt.figure()
+  for i in range(len(tx_positions)):
+      plt.plot(-tx_positions[i][0], tx_positions[i][1], 'rx', label='TX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(-tx_positions[i][0], tx_positions[i][1], text, fontsize=7)
+  for i in range(len(rx_positions)):
+      plt.plot(rx_positions[i][0], rx_positions[i][1], 'b+', label='RX' if i == 0 else "")
+      text = f"{int(i+1)}"
+      plt.text(rx_positions[i][0], rx_positions[i][1], text, fontsize=7)
+  plt.gca().set_aspect('equal')
+  plt.xlabel('Y')
+  plt.ylabel('Z')
+  plt.legend()
+  
+  
+  antennaSignal = np.zeros((MTX, NRX), dtype=np.complex128)
+  for m in range(MTX):
+      for n in range(NRX):
+          antennaSignal[m, n] = (m+1) + 1j * (n+1)
+  
+  
+  
+  xs, ys = specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+  xs,ys=list(xs),list(ys)
+  X = np.zeros((len(xs),len(ys)), dtype=complex)
+  X2 = np.zeros((len(xs),len(ys)), dtype=complex)
+  i_list = []
+  j_list = []
+  for m in range(MTX):
+    for n in range(NRX):
+      xv, yv = -tx_positions[m][0]+rx_positions[n][0], tx_positions[m][1]+rx_positions[n][1]
+      i, j = xs.index(xv), ys.index(yv)
+      if i is not None and j is not None:
+          i_list.append(i)
+          j_list.append(j)
+      X[i,j] = antennaSignal[m,n]
+  X2[i_list, j_list] = antennaSignal.ravel()
+  er = np.linalg.norm(X-X2)
+  plt.figure()
+  
+  for i in range(X.shape[0]):
+      for j in range(X.shape[1]):
+          val = X[i, j]
+          # val = i + 1j * j
+          text = f"{int(val.real)},{int(val.imag)}"
+          plt.text(i, j, text, ha="center", va="center", fontsize=7)
+
+  # Display grid
+  plt.gca().set_xlim(-0.5, X.shape[0]-0.5)
+  plt.gca().set_ylim(X.shape[1]-0.5, -0.5)
+  plt.gca().invert_yaxis() 
+  plt.gca().set_xlabel("Azimuth Index")
+  plt.gca().set_ylabel("Elevation Index")
+  plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+  plt.gca().set_aspect('equal')
+  plt.tight_layout()
+  plt.show()
 def visualize_scenario():
   Triangles = ssp.utils.exportBlenderTriangles()
   Suite_Position,ScattersGeo = ssp.utils.export_radar_positions()

@@ -783,3 +783,18 @@ def minimum_redundancy_array(N, array_type="restricted"):
         return selected_arrays[N]
     else:
         raise ValueError(f"No array configuration found for N = {N}.")
+
+def mimo_antenna_order(specifications):
+  tx_positions,rx_positions = specifications["TXRXPos"]
+  xs, ys = specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+  xs,ys=list(xs),list(ys)
+  i_list = []
+  j_list = []
+  for m in range(len(tx_positions)):
+    for n in range(len(rx_positions)):
+      xv, yv = -tx_positions[m][0]+rx_positions[n][0], tx_positions[m][1]+rx_positions[n][1]
+      i, j = xs.index(xv), ys.index(yv)
+      if i is not None and j is not None:
+        i_list.append(i)
+        j_list.append(j)
+  return np.array(i_list), np.array(j_list)

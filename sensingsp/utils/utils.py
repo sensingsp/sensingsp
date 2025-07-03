@@ -298,6 +298,7 @@ def zeroDopplerCancellation_4Simulation(path_d_drate_amp,attenuation_dB=80):
                   d_drate_amp[2]*=attenuation
 
 def trimUserInputs():
+    bpy.ops.object.select_all(action='DESELECT')
     current_working_directory = os.getcwd()
     if "Simulation Settings" in bpy.data.objects:
         sim_axes = bpy.data.objects["Simulation Settings"]
@@ -471,6 +472,7 @@ def trimUserInputs():
         specifications['continuousCPIsTrue_oneCPIpeerFrameFalse']=radarobject['GeneralRadarSpec_Object']['continuousCPIsTrue_oneCPIpeerFrameFalse']
 
         tx_positions,rx_positions=radarobject['GeneralRadarSpec_Object']["TXRXPos"]
+        specifications['TXRXPos']=radarobject['GeneralRadarSpec_Object']["TXRXPos"]
         vainfo = ssp.radar.utils.virtualArray_info(tx_positions,rx_positions)
         specifications['ULA_TXRX_Lx_Ly_NonZ']=vainfo
         radarSpecifications.append(specifications)

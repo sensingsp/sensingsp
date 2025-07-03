@@ -263,6 +263,10 @@ def extrafunctions(st):
         # bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))
         # ws_axes = bpy.context.object
         # ws_axes.name = f'ssp Version: {ssp.__version__}'
+    
+    if st == "Array Visualization":
+        ssp.visualization.visualize_array()
+        
     if st == "Environment information":
         bpy.context.view_layer.update()
         depsgraph = bpy.context.evaluated_depsgraph_get()

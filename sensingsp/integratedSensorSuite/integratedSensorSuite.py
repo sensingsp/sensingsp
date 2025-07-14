@@ -1416,8 +1416,10 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
               AngleMap = np.abs(np.fft.fftshift(AngleMap, axes=0))
               THR = 3*np.mean(AngleMap)
               detected_points_Angles = np.where(AngleMap > THR)
-              normalized_sinaz = np.linspace(-1,1,NFFT_Angle)
-              angles1 = -np.arcsin(normalized_sinaz[detected_points_Angles[0]])
+              # normalized_sinaz = np.linspace(-1,1,NFFT_Angle)
+              normalized_sinaz = np.fft.fftshift(np.fft.fftfreq(NFFT_Angle))
+              dpL = .5
+              angles1 = -np.arcsin(1/dpL*normalized_sinaz[detected_points_Angles[0]])
               rangeTarget = d_fft[detected_points[0][id]]
               angles2 = 0
               dopplerTarget = f_Doppler[detected_points[1][id]]
@@ -1426,7 +1428,7 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
               yTarget = (rangeTarget * np.tan(angles2)) / denominator
               zTarget = rangeTarget / denominator
               for iTarget in range(xTarget.shape[0]):
-                local_point = Vector((xTarget[iTarget], yTarget[iTarget], -zTarget[iTarget]))
+                local_point = Vector((-xTarget[iTarget], yTarget[iTarget], -zTarget[iTarget]))
                 global_point = global_location + global_rotation @ (local_point * global_scale)
                 bpy.ops.mesh.primitive_uv_sphere_add(radius=.03, location=global_point)
                 sphere = bpy.context.object

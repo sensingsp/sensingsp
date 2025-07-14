@@ -34,6 +34,9 @@ def define_settings():
         temp_dir = tempfile.gettempdir()
         radarsim_dir = os.path.join(temp_dir, 'SensingSP')
         os.makedirs(radarsim_dir, exist_ok=True)
+        outputFiles = os.path.join(radarsim_dir, 'RadarOutputsFolder')
+        os.makedirs(outputFiles, exist_ok=True)
+        sim_axes["Radar Outputs Folder"]=outputFiles
         sim_axes["Video Directory"]=radarsim_dir
         sim_axes["Add Ris"] = f"0,8,8,{os.path.join(radarsim_dir, 'Ris.mat')},2"
         sim_axes["Add Probe"] = f"1,.1,20,20,db1,range_effect1,add_color1,add_open3d1,colormap1,0.05"

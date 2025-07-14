@@ -1351,6 +1351,7 @@ def antenna_gain(PatternType,antenna_direction,PatternMaxGain, azimuth_beamwidth
     az,el = azel_fromRotMatrix_dir(antenna_direction,dir)
     gain=ssp.radar.utils.antenna_gain_from_beamwidth(np.rad2deg(az), np.rad2deg(el),PatternMaxGain, azimuth_beamwidth, elevation_beamwidth,antennaType)
     # gain = np.rad2deg(az)
+    # gain = np.abs(az+el)
   return gain
 def rx_amp(distanceLP,radar,irx,amp,dir):
   if 'RX-PatternType' in radar:

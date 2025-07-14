@@ -899,6 +899,7 @@ def predefined_array_configs_TI_IWR6843(isuite, iradar, location, rotation, f0=7
     # azel_signal_example = np.zeros((12,2),dtype=np.complex128)
     
     rows = [0,1,2,3,4,5,6,7,8,9,10,11]
+    rows = rows[::-1]
     # cols = [0,0,0,0,1,1,1,1,0,0,0 ,0]
     cols = [0,0,0,0,0,0,0,0,0,0,0 ,0]
     
@@ -1261,6 +1262,56 @@ def predefined_array_configs_SISO(isuite, iradar, location, rotation, f0=70e9,Pu
     return empty
 
 
+def predefined_array_configs_txrx(tx_positions,rx_positions,isuite, iradar, location, rotation, f0=70e9,Pulse1FMCW0=0):
+    Lambda = LightSpeed / f0
+    Suitename = f'SuitePlane_{isuite}'
+    Suite_obj = bpy.data.objects[Suitename]
+
+    bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=location, rotation=rotation, scale=(1, 1, 1))
+    empty = bpy.context.object
+    empty.name = f'RadarPlane_{isuite}_{iradar}_{0}'
+    empty.parent = Suite_obj
+    empty = setDefaults(empty,f0)
+    if Pulse1FMCW0 == 1 :
+        empty['RadarMode']='Pulse'
+        empty['PulseWaveform']='WaveformFile.txt'
+        
+        empty['Fs_MHz']=1500
+        # empty['Ts_ns']=1000/empty['Fs_MHz']
+        empty['Range_End']=100
+        
+    
+    s = 0.05
+    Type = 'SPOT'
+    
+    for i, pos in enumerate(tx_positions):
+        bpy.ops.object.light_add(type=Type, radius=1, location=(-pos[0]*Lambda/2, pos[1]*Lambda/2, 0))
+        tx = bpy.context.object
+        tx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+        tx.name = f'TX_{isuite}_{iradar}_{1}_{0}_{i+1:05}'
+        tx.parent = empty
+
+
+    bx0 = 0
+    bx = bx0
+    by = 0
+    s = 1
+
+    for i, pos in enumerate(rx_positions):
+        bpy.ops.object.camera_add(location=( -(bx+pos[0])*Lambda/2, (by+pos[1])*Lambda/2, 0), rotation=(0, 0, 0))
+        rx = bpy.context.object
+        rx.scale = (s*Lambda/2, s*Lambda/2, s*Lambda/2)
+        rx.name = f'RX_{isuite}_{iradar}_{1}_{0}_{i+1:05}'
+        rx.parent = empty
+        rx.data.lens = 10
+    
+    rows = [0]
+    cols = [0]
+    empty["antenna2azelIndex"]=[rows,cols]
+    empty["TXRXPos"]=[tx_positions,rx_positions]
+    return empty
+
+
 def predefined_array_configs_ALTOS_V1(isuite, iradar, location, rotation, f0=70e9):
     Lambda = LightSpeed / f0
     Suitename = f'SuitePlane_{isuite}'
@@ -1522,7 +1573,7 @@ def setDefaults(empty,f0):
     # empty['FMCW_Bandwidth_GHz'] = 1
     empty['Tempreture_K'] = 290.0
     empty['FMCW_ChirpSlobe_MHz_usec'] = 1000.0/60.0    #1000*empty['FMCW_Bandwidth_GHz']/empty['FMCW_ChirpTime_us']
-    empty['RangeFFT_OverNextP2'] = 2
+    empty['RangeFFT_OverNextP2'] = 0
     empty['Range_Start']=0
     empty['Range_End']=100
     empty['DopplerProcessingMIMODemod']='Simple'
@@ -1531,9 +1582,9 @@ def setDefaults(empty,f0):
     empty['CFAR_RD_false_alarm_rate']=1e-3
     empty['STC_Enabled']=False #
     empty['MTI_Enabled']=False #
-    empty['DopplerFFT_OverNextP2']=3
-    empty['AzFFT_OverNextP2']=2
-    empty['ElFFT_OverNextP2']=3
+    empty['DopplerFFT_OverNextP2']=0
+    empty['AzFFT_OverNextP2']=0
+    empty['ElFFT_OverNextP2']=0
     empty['CFAR_Angle_guard_cells']=1
     empty['CFAR_Angle_training_cells']=3
     empty['CFAR_Angle_false_alarm_rate']=.1
@@ -1556,6 +1607,9 @@ def setDefaults(empty,f0):
     empty['continuousCPIsTrue_oneCPIpeerFrameFalse']=False
     # empty['t_start_radar']=0
     empty['MIMO_Tech']='TDM'
+    empty['ArrayInfofile']=''
+    
+    
     
     
     # empty['Timing'] = RadarTiming(t_start_radar=0.0, t_start_manual_restart_tx=1.0, t_last_pulse=10.0,
@@ -2150,26 +2204,34 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         return radar
     return None
 
+def addRadarFile(filepath,f0=77e9,location_xyz=[0,0,0]):
+    suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
+    suiteIndex=len(suite_planes)-1
+    if len(suite_planes)==0:
+        suiteIndex=0
+        ssp.integratedSensorSuite.define_suite(suiteIndex, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
+    obj = suite_planes[-1]
+    radar_planes = ssp.environment.BlenderSuiteFinder().find_radar_planes(obj)
+    radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
 
-# suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
-#     obj = bpy.context.view_layer.objects.active
-#     if obj in suite_planes:
-#         suiteIndex = int(obj.name.split('_')[-1])
-#         radar_planes = ssp.environment.BlenderSuiteFinder().find_radar_planes(obj)
-#         radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
-#         if option=="Cascade":
-#             ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
-#         if option=="6843":
-#             ssp.radar.utils.predefined_array_configs_TI_IWR6843(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
-#         if option=="SISO":
-#             ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
-#         if option=="awr1642":
-#             ssp.radar.utils.predefined_array_configs_TI_AWR1642(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=freq)
-#         if option=="JSON":
-#             ssp.radar.utils.predefined_array_configs_JSON(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
-#     else:
-#         suiteIndex = max([int(plane.name.split('_')[-1]) for plane in suite_planes] or [-1]) + 1
-#         ssp.integratedSensorSuite.define_suite(suiteIndex, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-#         if option=="Cascade":
-#             ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,-np.pi/2, -np.pi/2)), f0=freq)
+    data = scipy.io.loadmat(filepath)
+    tx_positions   = data.get('tx_positions', None)
+    rx_positions   = data.get('rx_positions', None)
+    rx_bias =  data.get('rx_bias', None)[0]
+    AzELscale =  data.get('AzELscale', None)[0]
     
+    for i in range(len(rx_positions)):
+        rx_positions[i] = (AzELscale[0]*rx_positions[i][0]+rx_bias[0], AzELscale[1]*rx_positions[i][1]+rx_bias[1])
+    for i in range(len(tx_positions)):
+        tx_positions[i] = (AzELscale[0]*tx_positions[i][0], AzELscale[1]*tx_positions[i][1])
+    
+    vaorder        = data.get('vaorder', None)
+    vaorder2        = data.get('vaorder2', None)
+    PrecodingMatrix = data.get('PrecodingMatrix', None)
+    scale          = str(data.get('scale', None)[0])
+    vaprocessing   = str(data.get('vaprocessing', None)[0])
+    id = str(data.get('id', None)[0])
+    radar = ssp.radar.utils.predefined_array_configs_txrx(tx_positions=tx_positions,rx_positions=rx_positions,isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=f0) 
+    radar['ArrayInfofile']=filepath
+    return radar

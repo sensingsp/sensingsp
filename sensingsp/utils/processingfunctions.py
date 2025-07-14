@@ -245,13 +245,14 @@ def extrafunctions(st):
             ws_axes["Deterministic TX message"] = "SensingSP™ is an open-source library for simulating sensing systems with signal processing and ML tools. Install with: pip install sensingsp"
     if st == "SensingSP Version":
         # Check if property is already defined to avoid re-register errors
+        
         if not hasattr(bpy.types.Scene, "my_custom_text"):
             bpy.types.Scene.my_custom_text = bpy.props.StringProperty(
                 name="Settings",
-                default=f'Get Version: {ssp.__version__}',
+                default=f'SensingSP {ssp.__version__}; {ssp.config.updateTime}; To Update: BlenderPyhtonPath/python -m pip install --upgrade sensingsp',
             )
         else:
-            bpy.context.scene.my_custom_text = f'Get Version: {ssp.__version__}'
+            bpy.context.scene.my_custom_text = f'SensingSP {ssp.__version__}; {ssp.config.updateTime}; To Update: BlenderPyhtonPath/python -m pip install --upgrade sensingsp'
             
         def draw(self, context):
             self.layout.label(text="Version:")  # Simple label
@@ -301,6 +302,8 @@ def extrafunctions(st):
         bpy.context.window_manager.popup_menu(draw, title="Sensing Signal Processing", icon='INFO')
 
     if st == "Load Hub Environment":
+        ssp.radar.utils.apps.runHubLoad()
+        return
         if not("Load Hub Environment" in bpy.data.objects):
             import os
             bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(.01, .01, .01))

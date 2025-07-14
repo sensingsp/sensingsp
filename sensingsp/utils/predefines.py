@@ -4,6 +4,12 @@ import numpy as np
 from mathutils import Vector
 
 def add_radar_string(st):
+    if st=='App&File':
+        ssp.radar.utils.apps.runradarArrayapp()
+        return
+    if st == 'RadarVis':
+        ssp.radar.utils.apps.runRadarVis()
+        return
     suite_planes = ssp.environment.BlenderSuiteFinder().find_suite_planes()
     obj = bpy.context.view_layer.objects.active
     if obj in suite_planes:
@@ -26,10 +32,7 @@ def add_radar_string(st):
     if st=='SISO':
         freq = 76e9
         ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=freq)
-    if st=='JSON':
-        1
-        # ssp.radar.utils.predefined_array_configs_JSON(isuite=suiteIndex, iradar=radarIndex, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)),file_path="")
-
+    
 def add_sensors_string(st):
     1
 

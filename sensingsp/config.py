@@ -28,7 +28,7 @@ class Config():
         self.CurrentFrame = 1
         self.CurrentTime  = 0
         self.StartTime  = 0
-        
+        self.updateTime = 'July 15, 2025'
         
         self.RadarSpecifications = []
         self.suite_information = []
@@ -51,11 +51,12 @@ class Config():
         # self.geocalculator = self.raytracing.BlenderGeometry.BlenderGeometry()
         # self.rayTracingFunctions = self.raytracing.ra.RayTracingFunctions()
         self.chains =[
+            ('Configure Receiver Chain', "Configure Receiver Chain", "Configure Receiver Chain"),
             ('Starndard rx', "Starndard 1", "Starndard rx"),
                 ('Hand Gestures', "Hand Gestures", "MM-Wave Radar-Based Recognition of Multiple Hand Gestures Using Long Short-Term Memory (LSTM) Neural Network"),
                 ('RX chain 2', "RX chain 2", "RX chain 2"),
             ]
-        self.apps =[
+        self.apps = [
                 ('FMCW Chirp Parameters Calculator', "FMCW Chirp Calculator", "FMCW Chirp Parameters Calculator"),
                 ('RIS Analysis', "RIS Analysis", "RIS Analysis"),
                 ('Radar Parameters', "Radar Parameters", "Radar Parameters"),
@@ -64,13 +65,14 @@ class Config():
                 ('GAN Radar Waveforms', "GAN Radar Waveforms", "GAN Radar Waveforms"),
                 ('SHARP Wifi Sensing', "SHARP Wifi Sensing", "SHARP Wifi Sensing"),
                 ('Patch(microstrip) Antenna Pattern', "Patch(microstrip) Antenna Pattern", "Patch(microstrip) Antenna Pattern"),
+                ('Antenna Element Pattern', "Antenna Element Pattern", "Antenna Element Pattern"),
             ]
         self.radars =[
                 ('TI AWR 1642 (2TX-4RX)', "TI AWR 1642 (2TX-4RX)", "TI AWR 1642 (2TX-4RX)"),
                 ('TI IWR 6843 (3TX-4RX)', "TI IWR 6843 (3TX-4RX)", "TI IWR 6843 (3TX-4RX)"),
                 ('TI Cascade AWR 2243 (12TX-16RX)', "TI Cascade AWR 2243 (12TX-16RX)", "TI Cascade AWR 2243 (12TX-16RX)"),
                 ('SISO', "SISO", "SISO"),
-                ('JSON', "JSON", "JSON"),
+                ('App&File', "App&File", "App&File"),
             ]
         self.sensortypes =[
                 ('Lidar', "Lidar", "Lidar"),
@@ -108,12 +110,220 @@ class Config():
                 ('Wifi Sensing Settings', "Wifi Sensing Settings", "Wifi Sensing Settings"),
                 ('Load Hub Environment', "Load Hub Environment", "Load Hub Environment"),
                 ('Environment information', "Environment information", "Environment information"),
-                ('SensingSP Version', "SensingSP Version", "SensingSP Version"),
                 ('Array Visualization', "Array Visualization", "Array Visualization"),
+                ('SensingSP Version', "SensingSP Version", "SensingSP Version"),
             ]
         self.hub_REPO = "https://raw.githubusercontent.com/sensingsp/sensingsp-hub/main"
         self.myglobal_outsidedefined_RIS = None
         self.appSTYLESHEET = """
+            /* ========== Base ========== */
+            QWidget {
+                background-color: #2B2B2B;
+                color: #F0F0F0;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 11pt;
+            }
+
+            /* ========== Frames & GroupBoxes (panels) ========== */
+            QFrame, QGroupBox {
+                background-color: #3A3A3A;
+                border: 1px solid #4E4E4E;
+                border-radius: 2px;
+                margin-top: 6px;
+                padding: 4px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 4px;
+                color: #F0F0F0;
+                font-weight: bold;
+            }
+
+            /* ========== PushButtons & ToolButtons ========== */
+            QPushButton, QToolButton {
+                background-color: #444444;
+                border: 1px solid #5A5A5A;
+                border-radius: 2px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover, QToolButton:hover {
+                background-color: #555555;
+            }
+            QPushButton:pressed, QToolButton:pressed {
+                background-color: #666666;
+            }
+            QPushButton:checked, QToolButton:checked {
+                background-color: #FF8C00; /* orange accent */
+                border: 1px solid #CC7000;
+                color: #2B2B2B;
+            }
+            QPushButton:disabled, QToolButton:disabled {
+                background-color: #3A3A3A;
+                color: #6E6E6E;
+                border: 1px solid #4E4E4E;
+            }
+
+            /* ========== MenuBar & Menus ========== */
+            QMenuBar {
+                background-color: #2B2B2B;
+                border-bottom: 1px solid #4E4E4E;
+            }
+            QMenuBar::item {
+                background-color: transparent;
+                padding: 4px 8px;
+                margin: 0 2px;
+            }
+            QMenuBar::item:selected {
+                background-color: #444444;
+            }
+            QMenu {
+                background-color: #3A3A3A;
+                border: 1px solid #4E4E4E;
+            }
+            QMenu::item {
+                padding: 4px 24px 4px 24px;
+            }
+            QMenu::item:selected {
+                background-color: #555555;
+            }
+
+            /* ========== LineEdits & TextEdits ========== */
+            QLineEdit, QTextEdit, QPlainTextEdit {
+                background-color: #252525;
+                border: 1px solid #4E4E4E;
+                border-radius: 2px;
+                padding: 4px;
+                selection-background-color: #FF8C00;
+                selection-color: #2B2B2B;
+            }
+            QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
+                border: 1px solid #FF8C00;
+            }
+
+            /* ========== ComboBoxes ========== */
+            QComboBox {
+                background-color: #252525;
+                border: 1px solid #4E4E4E;
+                border-radius: 2px;
+                padding: 4px;
+            }
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 16px;
+                border-left: 1px solid #4E4E4E;
+            }
+            QComboBox::down-arrow {
+                image: url(your-arrow-icon.png);
+                width: 10px;
+                height: 10px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3A3A3A;
+                border: 1px solid #4E4E4E;
+                selection-background-color: #555555;
+            }
+
+            /* ========== Tabs ========== */
+            QTabWidget::pane {
+                border: 1px solid #4E4E4E;
+                top: -1px; /* overlap the tabs */
+            }
+            QTabBar::tab {
+                background-color: #3A3A3A;
+                border: 1px solid #4E4E4E;
+                border-bottom: none;
+                border-top-left-radius: 2px;
+                border-top-right-radius: 2px;
+                padding: 6px 12px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2B2B2B;
+                color: #FF8C00;
+                border-color: #FF8C00;
+            }
+            QTabBar::tab:hover {
+                background-color: #555555;
+            }
+
+            /* ========== Sliders ========== */
+            QSlider::groove:horizontal {
+                background: #4E4E4E;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #FF8C00;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::groove:vertical {
+                background: #4E4E4E;
+                width: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:vertical {
+                background: #FF8C00;
+                height: 12px;
+                margin: 0 -4px;
+                border-radius: 6px;
+            }
+
+            /* ========== ScrollBars ========== */
+            QScrollBar:vertical {
+                background-color: #2B2B2B;
+                width: 10px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #5A5A5A;
+                min-height: 20px;
+                border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                background: none;
+                height: 0;
+            }
+            QScrollBar:horizontal {
+                background-color: #2B2B2B;
+                height: 10px;
+                margin: 0;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #5A5A5A;
+                min-width: 20px;
+                border-radius: 4px;
+            }
+
+            /* ========== Progress Bars ========== */
+            QProgressBar {
+                background-color: #3A3A3A;
+                border: 1px solid #4E4E4E;
+                border-radius: 2px;
+                text-align: center;
+                height: 12px;
+            }
+            QProgressBar::chunk {
+                background-color: #FF8C00;
+                border-radius: 2px;
+            }
+
+            /* ========== Table Views ========== */
+            QTableView {
+                background-color: #252525;
+                gridline-color: #4E4E4E;
+                alternate-background-color: #2B2B2B;
+            }
+            QHeaderView::section {
+                background-color: #3A3A3A;
+                padding: 4px;
+                border: 1px solid #4E4E4E;
+            }
+            """
+        self.appSTYLESHEET0 = """
             /* General */
             QWidget {
                 background-color: #f5f5f5;

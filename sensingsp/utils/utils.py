@@ -12,6 +12,7 @@ import platform
 import time
 import matplotlib.pyplot as plt
 import cv2
+import scipy.io
 # def subdivide_object(obj, level=2):
 #     if obj is None:
 #         return
@@ -239,6 +240,8 @@ def delete_all_objects():
       bpy.data.objects["Wifi Sensing Settings"].select_set(False)
       
     bpy.ops.object.delete()
+    ssp.RadarSpecifications = [] 
+    ssp.config.restart()
 def save_Blender(folder="",file="save_frompython.blend"):
   if folder == "":
     folder = ssp.config.temp_folder
@@ -299,6 +302,10 @@ def zeroDopplerCancellation_4Simulation(path_d_drate_amp,attenuation_dB=80):
 
 def trimUserInputs():
     bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.context.scene.objects:
+      if obj.type == 'MESH':
+            if "RCS0" in obj:
+                obj["RCS0"] = float(obj["RCS0"])
     current_working_directory = os.getcwd()
     if "Simulation Settings" in bpy.data.objects:
         sim_axes = bpy.data.objects["Simulation Settings"]
@@ -371,6 +378,12 @@ def trimUserInputs():
         specifications['RF_AnalogNoiseFilter_Bandwidth'] = radarobject['GeneralRadarSpec_Object']['RF_AnalogNoiseFilter_Bandwidth_MHz']*1e6
         specifications['MIMO_Antenna_Azimuth_Elevation_Order']=radarobject['GeneralRadarSpec_Object']['antenna2azelIndex']
         specifications['matrix_world']=radarobject['GeneralRadarSpec_Object'].matrix_world.decompose()
+        if "ArrayInfofile" in radarobject["GeneralRadarSpec_Object"].keys():
+          specifications['ArrayInfofile']=radarobject['GeneralRadarSpec_Object']['ArrayInfofile']
+        else:
+          specifications['ArrayInfofile']=None
+          
+        modifyArrayinfowithFile(specifications)
         k=0
         global_location_Center = Vector((0,0,0))
         global_location_TX = []
@@ -475,6 +488,7 @@ def trimUserInputs():
         specifications['TXRXPos']=radarobject['GeneralRadarSpec_Object']["TXRXPos"]
         vainfo = ssp.radar.utils.virtualArray_info(tx_positions,rx_positions)
         specifications['ULA_TXRX_Lx_Ly_NonZ']=vainfo
+        
         radarSpecifications.append(specifications)
       RadarSpecifications.append(radarSpecifications)
       
@@ -485,6 +499,39 @@ def trimUserInputs():
     # os.makedirs('frames')
     ssp.RadarSpecifications = RadarSpecifications
 
+def modifyArrayinfowithFile(specifications):
+  if specifications['ArrayInfofile'] == '':
+    return
+  if os.path.exists(specifications['ArrayInfofile'])==False:
+    return
+  data = scipy.io.loadmat(specifications['ArrayInfofile'])
+  tx_positions   = data.get('tx_positions', None)
+  rx_positions   = data.get('rx_positions', None)
+  rx_bias =  data.get('rx_bias', None)[0]
+  for i in range(len(rx_positions)):
+      rx_positions[i] = (rx_positions[i][0]+rx_bias[0], rx_positions[i][1]+rx_bias[1])
+
+  vaorder        = data.get('vaorder', None)
+  vaorder2        = data.get('vaorder2', None)
+  PrecodingMatrix = data.get('PrecodingMatrix', None)
+  scale          = str(data.get('scale', None)[0])
+  vaprocessing   = str(data.get('vaprocessing', None)[0])
+  AzELscale       = data.get('AzELscale', None)[0]
+
+  id = str(data.get('id', None)[0])
+  if len(rx_positions) != specifications['N_RX']:
+    return
+  if len(tx_positions) != specifications['M_TX']:
+    return
+  
+  specifications['PrecodingMatrix'] = np.tile(PrecodingMatrix, (int(np.ceil(specifications['NPulse'] / PrecodingMatrix.shape[0])), 1))[:specifications['NPulse'], :]
+  specifications['vaprocessing']=vaprocessing
+  specifications['vaorder']=vaorder
+  specifications['vaorder2']=vaorder2
+  specifications['AzELscale']=AzELscale
+  
+    
+    
 def open_Blend(file):
   bpy.ops.wm.open_mainfile(filepath=file)
 def applyDecimate(obj, decimateFactor):

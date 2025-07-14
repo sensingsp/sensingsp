@@ -684,9 +684,9 @@ def predefine_movingcube_6843(interpolation_type='LINEAR'):
     ssp.utils.delete_all_objects()
     ssp.utils.define_settings()
     cubex = ssp.environment.add_cube(location=Vector((2.7, np.sqrt(3**2-2.7**2), 0)), direction=Vector((1,0, 0)), scale=Vector((.1, .1, .1)), subdivision=0)
-    cubex["RCS0"]=1
+    cubex["RCS0"]=float(1.0)
     cube = ssp.environment.add_cube(location=Vector((0, 0, 0)), direction=Vector((1, 0, 0)), scale=Vector((.1, .1, .1)), subdivision=0)
-    cube["RCS0"]=1
+    cube["RCS0"]=float(1.0)
     cube.location = (3,0,0)
     cube.keyframe_insert(data_path="location", frame=1)
     cube.location = (3, 3,0)
@@ -704,7 +704,12 @@ def predefine_movingcube_6843(interpolation_type='LINEAR'):
     # radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9,LinearArray_TXPos=[0],LinearArray_RXPos=[i*3e8/70e9/2 for i in range(30)])
     
     
-    
+    radar['CFAR_RD_training_cells']=20
+    radar['CFAR_RD_guard_cells']=10
+    radar['CFAR_RD_alpha']=5.0
+    radar['CFAR_Angle_training_cells']=10
+    radar['CFAR_Angle_guard_cells']=0
+    radar['CFAR_Angle_alpha']=2.0
     # radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=0
     
     ssp.utils.set_frame_start_end(start=1,end=2)
@@ -931,6 +936,8 @@ def radar_path_d_drate_amp(path_d_drate_amp,FigsAxes):
     # plt.draw() 
     # plt.pause(0.1)
 def rcxchain(st):
+    if st == "Configure Receiver Chain":
+        ssp.radar.utils.apps.runRadarVis()
     if st=="Hand Gestures":
         1
 def wifi_sensing():
@@ -1258,17 +1265,6 @@ def predefine_Altos_Radar():
     x,y,z = ssp.utils.sph2cart(r, azimuth, elevatio)
     cubex = ssp.environment.add_cube(location=Vector((x,y,z)), direction=Vector((1,0, 0)), scale=Vector((.02, .02, .02)), subdivision=0)
     cubex["RCS0"]=10
-    # cube = ssp.environment.add_cube(location=Vector((5, 2, 0)), direction=Vector((1, 0, 0)), scale=Vector((.02, .02, .02)), subdivision=0)
-    # cube["RCS0"]=40
-    # cube.location = (4,0,0)
-    # cube.keyframe_insert(data_path="location", frame=1)
-    # cube.location = (4, 3,0)
-    # cube.keyframe_insert(data_path="location", frame=30)
-    # cube.location = (4, -3,0)
-    # cube.keyframe_insert(data_path="location", frame=100)
-    # for fcurve in cube.animation_data.action.fcurves:
-    #     for keyframe in fcurve.keyframe_points:
-    #         keyframe.interpolation = 'LINEAR'
     ssp.utils.define_settings()
     ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
     radar = ssp.radar.utils.predefined_array_configs_ALTOS_V1(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=77e9)
@@ -1280,6 +1276,40 @@ def predefine_Altos_Radar():
     radar['DopplerFFT_OverNextP2']=1
     radar['AzFFT_OverNextP2']=5
     radar['Range_End']=20 
+    ssp.utils.set_frame_start_end(start=1,end=40)
+    ssp.utils.useCUDA()
+    ssp.utils.trimUserInputs() 
+    ssp.config.restart()
+
+def predefine_Altos_Radar_file(filename):
+    ssp.utils.delete_all_objects()
+    r, azimuth, elevatio = 4, np.deg2rad(0), np.deg2rad(0)
+    x,y,z = ssp.utils.sph2cart(r, azimuth, elevatio)
+    cubex = ssp.environment.add_cube(location=Vector((x,y,z)), direction=Vector((1,0, 0)), scale=Vector((.2, .2, .2)), subdivision=0)
+    cubex["RCS0"]=10
+    ssp.utils.define_settings()
+    ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+    if os.path.exists(filename):
+        radar = ssp.radar.utils.addRadarFile(filename,77*1e9)
+        # radar = ssp.radar.utils.predefined_array_configs_ALTOS_V1(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=77e9)
+        # ssp.radar.utils.predefined_array_configs_ALTOS_V1(isuite=0, iradar=1, location=Vector((10, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=77e9)
+        radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=20
+        radar['DopplerProcessingMIMODemod']='Simple'
+        radar['ADC_levels']=256*8
+        
+        radar['RangeFFT_OverNextP2']=0
+        radar['DopplerFFT_OverNextP2']=0
+        radar['AzFFT_OverNextP2']=0
+        
+        radar['Range_End']=20 
+        radar['CFAR_RD_guard_cells']=2 
+        radar['CFAR_RD_training_cells']=10
+        radar['CFAR_RD_alpha']=5
+        radar['CFAR_Angle_guard_cells']=5
+        radar['CFAR_Angle_training_cells']=20
+        radar['CFAR_Angle_alpha']=30 
+        
+        
     ssp.utils.set_frame_start_end(start=1,end=40)
     ssp.utils.useCUDA()
     ssp.utils.trimUserInputs() 
@@ -1725,10 +1755,10 @@ def generate_chest_vibration_target(respiration_angle_amplitude=30,
     )
     chest_skin = bpy.context.object
     chest_skin.scale = chest_dimensions
-
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.subdivide(number_cuts=subdivisions)
-    bpy.ops.object.mode_set(mode='OBJECT')
+    if subdivisions>0:
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.subdivide(number_cuts=subdivisions)
+        bpy.ops.object.mode_set(mode='OBJECT')
     # return
     # Parent chest surface to armature with automatic weights
     bpy.ops.object.select_all(action='DESELECT')

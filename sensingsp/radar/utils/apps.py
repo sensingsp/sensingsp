@@ -30,7 +30,11 @@ from mathutils import Vector
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib
-matplotlib.use('Qt5Agg')  # Use Qt5 backend for Matplotlib
+try:
+    matplotlib.use('Qt5Agg')
+except Exception:
+    pass
+# Use Qt5 backend for Matplotlib
 # from mpl_toolkits.mplot3d import Axes3D
 # import sys
 

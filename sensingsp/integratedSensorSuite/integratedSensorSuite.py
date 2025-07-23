@@ -229,11 +229,13 @@ def SensorsSignalGeneration_frame(path_d_drate_amp): # input is ssp.Paths in ssp
             pulsebias = ssp.RadarSpecifications[isrx][irrx]['RadarTiming'].n_pulse - NPulseFrame 
             d_Frame_PulseTimes = cuda.device_array(Frame_PulseTimes.shape[0], dtype=Frame_PulseTimes.dtype)
             cuda.to_device(Frame_PulseTimes, to=d_Frame_PulseTimes)
+            # print("cuda call")
             CUDA_signalGeneration[gridsize, blocksize](d_RangePulse,d_array_data, d_indices, indices.shape[0], N_ADC, NPulseFrame, Lambda, Ts,FMCW_ChirpSlobe,
                 d_PrecodingMatrix_real,d_PrecodingMatrix_imag,PrecodingMatrix.shape[0],PrecodingMatrix.shape[1],
                                                       d_Frame_PulseTimes,pulsebias
             )
             h_RangePulse = d_RangePulse.copy_to_host()
+            # print("cuda result")
             del d_array_data
             del d_indices
             del d_RangePulse
@@ -1245,6 +1247,260 @@ def polar_range_angle(RangeAngleMap,ranges,angles,ax_polar_True):
     # ax_polar_True.axis('off')
     # plt.show()
     # plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler_old(Signals,FigsAxes=None,Fig=None):
+  # RangeDopplerDistributed = []
+
+  bpy.ops.object.empty_add(type='PLAIN_AXES', align='WORLD', location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1))
+  empty = bpy.context.object
+  empty.name = f'Detection Cloud'
+  for isuite,radarSpecifications in enumerate(ssp.RadarSpecifications):
+      # RangeDopplerDistributed0 = []
+      # All_RangeResolutions = []
+      for iradar,specifications in enumerate(radarSpecifications):
+        FMCW_ChirpSlobe = specifications['FMCW_ChirpSlobe']
+        Ts = specifications['Ts']
+        PRI = specifications['PRI']
+        PrecodingMatrix = specifications['PrecodingMatrix']
+        RadarMode = specifications['RadarMode']
+        for XRadar,timeX in Signals[isuite]['radars'][iradar]:
+          fast_time_window = scipy.signal.windows.hamming(XRadar.shape[0])
+          X_windowed_fast = XRadar * fast_time_window[:, np.newaxis, np.newaxis]
+
+          if RadarMode == 'Pulse':
+            waveform_MF = specifications['PulseWaveform_Loaded']
+            matched_filter = np.conj(waveform_MF[::-1])
+            X_fft_fast = np.apply_along_axis(lambda x: np.convolve(x, matched_filter, mode='full'), axis=0, arr=X_windowed_fast)
+            X_fft_fast=X_fft_fast[matched_filter.shape[0]-1:,:,:]
+            d_fft = np.arange(X_fft_fast.shape[0]) * LightSpeed * Ts /2
+            
+          else:
+            NFFT_Range_OverNextPow2 =  specifications['RangeFFT_OverNextP2']
+            NFFT_Range = int(2 ** (np.ceil(np.log2(XRadar.shape[0]))+NFFT_Range_OverNextPow2))
+            X_fft_fast = np.fft.fft(X_windowed_fast, axis=0, n=NFFT_Range)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+            d_fft = np.arange(NFFT_Range) * LightSpeed / 2 / FMCW_ChirpSlobe / NFFT_Range / Ts
+          Range_Start = specifications['Range_Start']
+          Range_End = specifications['Range_End']
+          d1i = int(X_fft_fast.shape[0]*Range_Start/100.0)
+          d2i = int(X_fft_fast.shape[0]*Range_End/100.0)
+          d_fft = d_fft[d1i:d2i]
+          X_fft_fast = X_fft_fast[d1i:d2i,:,:] #(67 Range, 96 Pulse, 4 RX)
+
+          # print("XRadar shape:", XRadar.shape)
+          # XRadar shape: (128, 192, 16)
+
+          M_TX=PrecodingMatrix.shape[1]#specifications['M_TX']
+          L = X_fft_fast.shape[1]
+          Leff = int(L/M_TX)
+          
+          if ssp.config.DopplerProcessingMethod_FFT_Winv:
+            # slow_time_window = scipy.signal.windows.hamming(X_fft_fast.shape[1])
+            # X_windowed_slow = X_fft_fast * slow_time_window[np.newaxis,:,np.newaxis,np.newaxis]
+            N_Doppler = Leff
+            f_Doppler = np.hstack((np.linspace(-0.5/PRI/M_TX, 0, N_Doppler)[:-1], np.linspace(0, 0.5/PRI/M_TX, N_Doppler)))
+            f_Doppler = np.arange(0,N_Doppler)/N_Doppler/PRI/M_TX - 1/PRI/M_TX / 2
+
+            PrecodingMatrixInv = np.linalg.pinv(PrecodingMatrix)
+
+            rangeDopplerTXRX = np.zeros((X_fft_fast.shape[0], f_Doppler.shape[0], M_TX, X_fft_fast.shape[2]),dtype=complex)
+            for idop , f_Doppler_i in enumerate(f_Doppler):
+              dopplerSteeringVector = np.exp(1j*2*np.pi*f_Doppler_i*np.arange(L)*PRI)
+              X_doppler_comp = X_fft_fast * np.conj(dopplerSteeringVector[np.newaxis,:,np.newaxis])
+              rangeTXRX = np.einsum('ijk,lj->ilk', X_doppler_comp, PrecodingMatrixInv)
+              rangeDopplerTXRX[:, idop, :, :] = rangeTXRX
+          else:
+            rangePulseTXRX = np.zeros((X_fft_fast.shape[0], Leff, M_TX, X_fft_fast.shape[2]),dtype=complex)
+            for ipulse in range(Leff):
+              ind = ipulse*M_TX
+              rangePulseTXRX[:,ipulse,:,:]=X_fft_fast[:,ind:ind+M_TX,:]
+            NFFT_Doppler_OverNextPow2=0
+            NFFT_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
+            rangeDopplerTXRX = np.fft.fft(rangePulseTXRX, axis=1, n=NFFT_Doppler)
+            rangeDopplerTXRX = np.fft.fftshift(rangeDopplerTXRX,axes=1)
+            f_Doppler = np.linspace(0,1/PRI/M_TX,NFFT_Doppler)
+              
+              
+          global_location_TX,global_location_RX,global_location_Center = specifications['global_location_TX_RX_Center']
+          if len(global_location_TX)+len(global_location_RX)==2:
+            if FigsAxes is not None:
+              FigsAxes[0,0].cla()
+              FigsAxes[0,1].cla()
+              FigsAxes[0,0].plot(np.arange(XRadar.shape[0])*Ts*1e6,np.real(XRadar[:,0,0]))
+              FigsAxes[0,0].set_xlabel('t (usec)')
+              FigsAxes[0,0].set_ylabel('ADC Amp.')
+
+              FigsAxes[0,1].plot(d_fft,np.abs(X_fft_fast[:,0,:]))
+              FigsAxes[0,1].set_xlabel('Range (m)')
+              FigsAxes[0,1].set_ylabel('Amp.')
+
+              maxDoppler =.5 /PRI / M_TX
+              extent = [-maxDoppler* specifications['Lambda']/2 ,maxDoppler * specifications['Lambda']/2,d_fft[-1],d_fft[0]]
+              rangeDoppler4CFAR = np.mean(np.abs(rangeDopplerTXRX),axis=(2,3))
+              FigsAxes[1,0].imshow(10*np.log10(rangeDoppler4CFAR), extent=extent, aspect='auto')
+              FigsAxes[1,0].set_title("Range Doppler abs(mean) (CFAR)")
+              # FigsAxes[1,0].set_xlabel('Doppler (Hz)')
+              FigsAxes[1,0].set_xlabel('Velocity (m/s)')
+              FigsAxes[1,0].set_ylabel('Range (m)')
+              extent = [-.5 ,.5,d_fft[-1],d_fft[0]]
+            
+            continue
+          # PosIndex = np.array(specifications['Local_location_TXplusRX_Center'])
+          # azimuths = PosIndex[:, 0]
+          # elevations = PosIndex[:, 1]
+          
+          
+          # d_az = np.max(azimuths)-np.min(azimuths)
+          # d_el = np.max(elevations)-np.min(elevations)
+          # if d_az>d_el:
+          #   sorted_indices = np.argsort(azimuths)
+          #   sorted_PosIndex = PosIndex[sorted_indices,:]
+          #   sorted_PosIndex[:,0]-=sorted_PosIndex[0,0]
+          #   sorted_PosIndex[:,1]-=sorted_PosIndex[0,1]
+          #   sorted_PosIndex[:,0]=np.round(sorted_PosIndex[:,0])
+          #   sorted_PosIndex[:,1]=np.round(sorted_PosIndex[:,1])
+
+          #   unique_azimuths, unique_indices = np.unique(sorted_PosIndex[:, 0], return_index=True)
+          #   unique_PosIndex = sorted_PosIndex[unique_indices,:]
+
+          #   # print(unique_PosIndex)
+
+
+
+          rangeTXRX = np.zeros((rangeDopplerTXRX.shape[0],rangeDopplerTXRX.shape[2],rangeDopplerTXRX.shape[3]),dtype=rangeDopplerTXRX.dtype)
+          rangeDoppler4CFAR = np.mean(np.abs(rangeDopplerTXRX),axis=(2,3))
+          if 1:
+            num_train = 50  # Number of training cells
+            num_guard = 4   # Number of guard cells
+            prob_fa = 1e-3  # Desired probability of false alarm
+            # detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D(1.0*rangeDoppler4CFAR, num_train, num_guard, prob_fa)
+            CUDA_signalGeneration_Enabled = bpy.data.objects["Simulation Settings"]["CUDA SignalGeneration Enabled"]
+            if ssp.config.CUDA_is_available and CUDA_signalGeneration_Enabled:
+              detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
+            else:
+              # detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
+              detections,cfar_threshold = ssp.radar.utils.cfar_simple_2D(1.0*rangeDoppler4CFAR, 30)
+            # fig = plt.figure(figsize=(10, 8))
+            # ax = fig.add_subplot(111, projection='3d')
+            FigsAxes[1,2].cla()
+        # FigsAxes[1,2].set_xlabel('scatter index')
+        # FigsAxes[1,2].set_ylabel('dr (m/s)')
+    
+            distance = np.linspace(d_fft[0], d_fft[-1], rangeDoppler4CFAR.shape[0])  # Replace with real distance data
+            elevation = np.linspace(f_Doppler[0],f_Doppler[-1], rangeDoppler4CFAR.shape[1])  # Replace with real angle data
+            X, Y = np.meshgrid(elevation, distance)
+            FigsAxes[1,2].plot_surface(X, Y, 10*np.log10(rangeDoppler4CFAR), cmap='viridis', alpha=1)
+            FigsAxes[1,2].plot_surface(X, Y, 10*np.log10(cfar_threshold)+0, color='yellow', alpha=1)
+            detected_points = np.where(detections == 1)
+            FigsAxes[1,2].scatter(elevation[detected_points[1]], distance[detected_points[0]], 
+                       10*np.log10(rangeDoppler4CFAR[detected_points]), color='red', s=20, label='Post-CFAR Point Cloud')
+
+            # Labels and legend
+            FigsAxes[1,2].set_xlabel('Doppler (Hz)')
+            FigsAxes[1,2].set_ylabel('Distance (m)')
+            FigsAxes[1,2].set_zlabel('Magnitude (normalized, dB)')
+            FigsAxes[1,2].xaxis.set_visible(False)
+            FigsAxes[1,2].yaxis.set_visible(False)
+            FigsAxes[1,2].zaxis.set_visible(False)
+            # FigsAxes[1,2].legend()
+            # plt.show()
+            NDetection = detected_points[0].shape[0]
+            # rows = unique_PosIndex[:,2].astype(int)
+            # cols = unique_PosIndex[:,3].astype(int)
+            rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+            global_location, global_rotation, global_scale = specifications['matrix_world']  
+            for id in range(NDetection):
+              antennaSignal = rangeDopplerTXRX[detected_points[0][id],detected_points[1][id],:,:]
+              rangeVA = np.zeros((np.max(np.array(rows))+1,np.max(np.array(cols))+1),dtype=antennaSignal.dtype)
+              rangeVA[np.array(rows), np.array(cols)] = antennaSignal.ravel()
+              NFFT_Angle_OverNextPow2 =  1
+              NFFT_Angle = int(2 ** (np.ceil(np.log2(rangeVA.shape[0]))+NFFT_Angle_OverNextPow2))
+              AngleMap = np.fft.fft(rangeVA, axis=0, n=NFFT_Angle)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+              AngleMap = np.abs(np.fft.fftshift(AngleMap, axes=0))
+              THR = 3*np.mean(AngleMap)
+              detected_points_Angles = np.where(AngleMap > THR)
+              # normalized_sinaz = np.linspace(-1,1,NFFT_Angle)
+              normalized_sinaz = np.fft.fftshift(np.fft.fftfreq(NFFT_Angle))
+              dpL = .5
+              angles1 = -np.arcsin(1/dpL*normalized_sinaz[detected_points_Angles[0]])
+              rangeTarget = d_fft[detected_points[0][id]]
+              angles2 = 0
+              dopplerTarget = f_Doppler[detected_points[1][id]]
+              denominator = np.sqrt(1 + np.tan(angles1)**2 + np.tan(angles2)**2)
+              xTarget = (rangeTarget * np.tan(angles1)) / denominator
+              yTarget = (rangeTarget * np.tan(angles2)) / denominator
+              zTarget = rangeTarget / denominator
+              for iTarget in range(xTarget.shape[0]):
+                local_point = Vector((-xTarget[iTarget], yTarget[iTarget], -zTarget[iTarget]))
+                global_point = global_location + global_rotation @ (local_point * global_scale)
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=.03, location=global_point)
+                sphere = bpy.context.object
+                sphere.parent=empty
+                # sphere.hide_viewport = False
+                # sphere.hide_render = False
+              # print(rangeTarget,dopplerTarget)
+              FigsAxes[0,2].plot(normalized_sinaz,10*np.log10(AngleMap))
+              FigsAxes[0,2].set_xlabel('sin(Angle)')
+              FigsAxes[0,2].set_ylabel('Amp.')
+              
+            
+          for irange in range(rangeDoppler4CFAR.shape[0]):
+            doppler_ind = np.argmax(rangeDoppler4CFAR[irange])
+            rangeTXRX[irange,:,:]=rangeDopplerTXRX[irange,doppler_ind,:,:]
+
+          # Selected_ind = [(0,0), (1,7), (2,6), (11,15)]
+          # rows, cols = zip(*Selected_ind)
+          rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+            
+          # print(rows)
+          # print(cols)
+          # rangeVA = rangeTXRX[:, rows, cols]
+          rangeVA = np.zeros((rangeTXRX.shape[0],np.max(np.array(rows))+1,np.max(np.array(cols))+1),dtype=antennaSignal.dtype)
+          for irva in range(rangeTXRX.shape[0]):
+            rangeVA[irva,np.array(rows), np.array(cols)] = rangeTXRX[irva,:,:].ravel()
+              
+          angle_window = scipy.signal.windows.hamming(rangeVA.shape[1])
+          X_windowed_rangeVA = rangeVA * angle_window[np.newaxis,:,np.newaxis]
+          
+          # Bartlet Angle 
+          # Capon
+          
+          NFFT_Angle_OverNextPow2 =  1
+          NFFT_Angle = int(2 ** (np.ceil(np.log2(X_windowed_rangeVA.shape[1]))+NFFT_Angle_OverNextPow2))
+          RangeAngleMap = np.fft.fft(X_windowed_rangeVA, axis=1, n=NFFT_Angle)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+          RangeAngleMap = np.fft.fftshift(RangeAngleMap, axes=1)
+          
+          # sina_fft = np.rad2deg(np.arcsin(np.linspace(-1,1,NFFT_AngleNFFT_Angle)))
+          if FigsAxes is not None:
+            FigsAxes[0,0].cla()
+            FigsAxes[0,1].cla()
+            FigsAxes[0,0].plot(np.arange(XRadar.shape[0])*Ts*1e6,np.real(XRadar[:,0,0]))
+            FigsAxes[0,0].set_xlabel('t (usec)')
+            FigsAxes[0,0].set_ylabel('ADC Amp.')
+
+            FigsAxes[0,1].plot(d_fft,np.abs(X_fft_fast[:,0,:]))
+            FigsAxes[0,1].set_xlabel('Range (m)')
+            FigsAxes[0,1].set_ylabel('Amp.')
+
+            maxDoppler =.5 /PRI /M_TX
+            extent = [-maxDoppler* specifications['Lambda']/2 ,maxDoppler * specifications['Lambda']/2,d_fft[-1],d_fft[0]]
+            FigsAxes[1,0].imshow(10*np.log10(rangeDoppler4CFAR), extent=extent, aspect='auto')
+            FigsAxes[1,0].set_title("Range Doppler abs(mean) (CFAR)")
+            # FigsAxes[1,0].set_xlabel('Doppler (Hz)')
+            FigsAxes[1,0].set_xlabel('Velocity (m/s)')
+            FigsAxes[1,0].set_ylabel('Range (m)')
+            extent = [-.5 ,.5,d_fft[-1],d_fft[0]]
+            FigsAxes[1,1].imshow(10*np.log10(np.abs(RangeAngleMap)), extent=extent, aspect='auto')
+            FigsAxes[1,1].set_xlabel('sin(az)')
+            FigsAxes[1,1].set_ylabel('Range (m)')
+            FigsAxes[1,1].set_title("Bartlet Beamformer")
+            
+  if FigsAxes is not None:
+    plt.draw()  # Redraw the figure
+    plt.pause(0.1)
+    plt.gcf().canvas.flush_events() 
+    # image=ssp.visualization.captureFig(Fig)
+    # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    # cv2.imshow('moein', image)
+    # cv2.waitKey(50)
 
 def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signals,FigsAxes=None,Fig=None):
   # RangeDopplerDistributed = []
@@ -1342,25 +1598,25 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
               extent = [-.5 ,.5,d_fft[-1],d_fft[0]]
             
             continue
-          PosIndex = np.array(specifications['Local_location_TXplusRX_Center'])
-          azimuths = PosIndex[:, 0]
-          elevations = PosIndex[:, 1]
+          # PosIndex = np.array(specifications['Local_location_TXplusRX_Center'])
+          # azimuths = PosIndex[:, 0]
+          # elevations = PosIndex[:, 1]
           
           
-          d_az = np.max(azimuths)-np.min(azimuths)
-          d_el = np.max(elevations)-np.min(elevations)
-          if d_az>d_el:
-            sorted_indices = np.argsort(azimuths)
-            sorted_PosIndex = PosIndex[sorted_indices,:]
-            sorted_PosIndex[:,0]-=sorted_PosIndex[0,0]
-            sorted_PosIndex[:,1]-=sorted_PosIndex[0,1]
-            sorted_PosIndex[:,0]=np.round(sorted_PosIndex[:,0])
-            sorted_PosIndex[:,1]=np.round(sorted_PosIndex[:,1])
+          # d_az = np.max(azimuths)-np.min(azimuths)
+          # d_el = np.max(elevations)-np.min(elevations)
+          # if d_az>d_el:
+          #   sorted_indices = np.argsort(azimuths)
+          #   sorted_PosIndex = PosIndex[sorted_indices,:]
+          #   sorted_PosIndex[:,0]-=sorted_PosIndex[0,0]
+          #   sorted_PosIndex[:,1]-=sorted_PosIndex[0,1]
+          #   sorted_PosIndex[:,0]=np.round(sorted_PosIndex[:,0])
+          #   sorted_PosIndex[:,1]=np.round(sorted_PosIndex[:,1])
 
-            unique_azimuths, unique_indices = np.unique(sorted_PosIndex[:, 0], return_index=True)
-            unique_PosIndex = sorted_PosIndex[unique_indices,:]
+          #   unique_azimuths, unique_indices = np.unique(sorted_PosIndex[:, 0], return_index=True)
+          #   unique_PosIndex = sorted_PosIndex[unique_indices,:]
 
-            # print(unique_PosIndex)
+          #   # print(unique_PosIndex)
 
 
 
@@ -1404,12 +1660,16 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
             NDetection = detected_points[0].shape[0]
             # rows = unique_PosIndex[:,2].astype(int)
             # cols = unique_PosIndex[:,3].astype(int)
-            rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+            rangeVA = np.zeros((int(np.max(specifications['vaorder'][:,2])),int(np.max(specifications['vaorder'][:,3]))),dtype=rangeDopplerTXRX.dtype)
+            
+            # rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
             global_location, global_rotation, global_scale = specifications['matrix_world']  
             for id in range(NDetection):
               antennaSignal = rangeDopplerTXRX[detected_points[0][id],detected_points[1][id],:,:]
-              rangeVA = np.zeros((np.max(np.array(rows))+1,np.max(np.array(cols))+1),dtype=antennaSignal.dtype)
-              rangeVA[np.array(rows), np.array(cols)] = antennaSignal.ravel()
+              # rangeVA = np.zeros((np.max(np.array(rows))+1,np.max(np.array(cols))+1),dtype=antennaSignal.dtype)
+              # rangeVA[np.array(rows), np.array(cols)] = antennaSignal.ravel()
+              for indx in specifications['vaorder']:
+                  rangeVA[int(indx[2]-1), int(indx[3]-1)] = antennaSignal[int(indx[0]-1), int(indx[1]-1)]
               NFFT_Angle_OverNextPow2 =  1
               NFFT_Angle = int(2 ** (np.ceil(np.log2(rangeVA.shape[0]))+NFFT_Angle_OverNextPow2))
               AngleMap = np.fft.fft(rangeVA, axis=0, n=NFFT_Angle)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
@@ -1419,7 +1679,7 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
               # normalized_sinaz = np.linspace(-1,1,NFFT_Angle)
               normalized_sinaz = np.fft.fftshift(np.fft.fftfreq(NFFT_Angle))
               dpL = .5
-              angles1 = -np.arcsin(1/dpL*normalized_sinaz[detected_points_Angles[0]])
+              angles1 = np.arcsin(1/dpL*normalized_sinaz[detected_points_Angles[0]])
               rangeTarget = d_fft[detected_points[0][id]]
               angles2 = 0
               dopplerTarget = f_Doppler[detected_points[1][id]]
@@ -1445,17 +1705,19 @@ def SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signal
             doppler_ind = np.argmax(rangeDoppler4CFAR[irange])
             rangeTXRX[irange,:,:]=rangeDopplerTXRX[irange,doppler_ind,:,:]
 
-          # Selected_ind = [(0,0), (1,7), (2,6), (11,15)]
-          # rows, cols = zip(*Selected_ind)
-          rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
+          # # Selected_ind = [(0,0), (1,7), (2,6), (11,15)]
+          # # rows, cols = zip(*Selected_ind)
+          # rows,cols=specifications['MIMO_Antenna_Azimuth_Elevation_Order']
             
-          # print(rows)
-          # print(cols)
-          # rangeVA = rangeTXRX[:, rows, cols]
-          rangeVA = np.zeros((rangeTXRX.shape[0],np.max(np.array(rows))+1,np.max(np.array(cols))+1),dtype=antennaSignal.dtype)
+          # # print(rows)
+          # # print(cols)
+          # # rangeVA = rangeTXRX[:, rows, cols]
+          rangeVA = np.zeros((rangeTXRX.shape[0],rangeVA.shape[0],rangeVA.shape[1]),dtype=antennaSignal.dtype)
           for irva in range(rangeTXRX.shape[0]):
-            rangeVA[irva,np.array(rows), np.array(cols)] = rangeTXRX[irva,:,:].ravel()
-              
+          #   rangeVA[irva,np.array(rows), np.array(cols)] = rangeTXRX[irva,:,:].ravel()
+            for indx in specifications['vaorder']:
+                rangeVA[irva,int(indx[2]-1), int(indx[3]-1)] = rangeTXRX[irva,int(indx[0]-1), int(indx[1]-1)]
+                
           angle_window = scipy.signal.windows.hamming(rangeVA.shape[1])
           X_windowed_rangeVA = rangeVA * angle_window[np.newaxis,:,np.newaxis]
           

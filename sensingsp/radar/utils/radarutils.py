@@ -1549,7 +1549,16 @@ def predefined_array_configs_infineon_BGT24LTR11_CW(isuite, iradar, location, ro
     return empty    
     
 def setDefaults(empty,f0):
+    empty["Center_Frequency_GHz"] = f0/1e9
     empty["Transmit_Power_dBm"] = 12.0
+    empty['PRI_us']=70.0
+    empty['RadarMode']='FMCW'# 'Pulse' 'CW'
+    empty['FMCW_ChirpSlobe_MHz_usec'] = 1000.0/60.0    #1000*empty['FMCW_Bandwidth_GHz']/empty['FMCW_ChirpTime_us']
+    empty['Fs_MHz']=5.0
+    empty['N_ADC']  = 256
+    empty["FMCW"] = True
+    empty['PulseWaveform']='WaveformFile.txt'
+    
     empty["Transmit_Antenna_Element_Pattern"] = "Omni"
     empty["Transmit_Antenna_Element_Gain_db"] = 3.0
     empty["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 120.0
@@ -1558,66 +1567,81 @@ def setDefaults(empty,f0):
     empty["Receive_Antenna_Element_Pattern"] = "Omni"
     empty["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = 120.0
     empty["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = 120.0
-    empty["Center_Frequency_GHz"] = f0/1e9
-    empty['PRI_us']=70.0
-    empty['Fs_MHz']=5.0
-    # empty['Ts_ns']=1000/empty['Fs_MHz']
-    empty['NPulse'] = 3 * 64
-    empty['N_ADC']  = 256
-    empty['RangeWindow']  = 'Hamming'
-    empty['DopplerWindow']  = 'Hamming'
-    # empty['N_FFT_ADC']  = 128
-    # empty['N_FFT_Doppler']  = 128
-    # empty['Lambda_mm']=1000*LightSpeed/empty["Center_Frequency_GHz"]/1e9
-    # empty['FMCW_ChirpTime_us'] = 60
-    # empty['FMCW_Bandwidth_GHz'] = 1
+
+    empty['ArrayInfofile']=''
+    empty['Array_initialization'] = "This UI"
+    empty['Default_Array_Config'] = "2x4"
+    empty['Position_Scale'] = "half wavelength"
+    empty['TXPos_xy'] = "0,0|4,0"
+    empty['RXPos_xy'] = "0,0|1,0|2,0|3,0"
+    empty['RXPos_xy_bias'] = "10.5,10.5"
+    empty['distance scaling'] = "1,1"
+    empty['VA order (TX,RX)->[X,Y]|'] = "(1,1)->[1,1] | (1,2)->[2,1] | (1,3)->[3,1] | (1,4)->[4,1] | (2,1)->[5,1] | (2,2)->[6,1] | (2,3)->[7,1] | (2,4)->[8,1] | "
+    empty['VA order2 (TX,RX)->[X,Y]|'] = ""
+    empty['MIMO_Tech']='TDM'
+    empty['MIMO_W']="(1+0j),0j;0j,(1+0j)"
+    
+
+    empty['RF_AnalogNoiseFilter_Bandwidth_MHz']=10.0
+    empty['RF_NoiseFiguredB']=5.0
     empty['Tempreture_K'] = 290.0
-    empty['FMCW_ChirpSlobe_MHz_usec'] = 1000.0/60.0    #1000*empty['FMCW_Bandwidth_GHz']/empty['FMCW_ChirpTime_us']
-    empty['RangeFFT_OverNextP2'] = 0
-    empty['Range_Start']=0
-    empty['Range_End']=100
-    empty['DopplerProcessingMIMODemod']='Simple'
-    empty['CFAR_RD_guard_cells']=2
-    empty['CFAR_RD_training_cells']=10
-    empty['CFAR_RD_false_alarm_rate']=1e-3
-    empty['STC_Enabled']=False #
-    empty['MTI_Enabled']=False #
-    empty['DopplerFFT_OverNextP2']=0
-    empty['AzFFT_OverNextP2']=0
-    empty['ElFFT_OverNextP2']=0
-    empty['CFAR_Angle_guard_cells']=1
-    empty['CFAR_Angle_training_cells']=3
-    empty['CFAR_Angle_false_alarm_rate']=.1
-    empty['CFAR_RD_alpha']=30.0
-    empty['CFAR_Angle_alpha']=5.0
-    empty["FMCW"] = True
     empty['ADC_peak2peak']=2.0
     empty['ADC_levels']=256
     empty['ADC_ImpedanceFactor']=300.0
     empty['ADC_LNA_Gain_dB']=50.0
-    empty['RF_NoiseFiguredB']=5.0
-    empty['RF_AnalogNoiseFilter_Bandwidth_MHz']=10.0
     empty['ADC_SaturationEnabled']=False
-    empty['RadarMode']='FMCW'# 'Pulse' 'CW'
-    empty['PulseWaveform']='WaveformFile.txt'
+    
+    empty['RangeWindow']  = 'Hamming'
+    empty['RangeFFT_OverNextP2'] = 0
+    empty['Range_Start']=0
+    empty['Range_End']=100
+    empty['Pulse_Buffering']=False
+    empty['ClutterRemoval_Enabled']=False
+    empty['DopplerProcessingMIMODemod']='Simple'
+    empty['NPulse'] = 3 * 64
+    empty['DopplerWindow']  = 'Hamming'
+    empty['DopplerFFT_OverNextP2']=0
+    empty['RangeDopplerCFARLogScale']=True
+    empty['CFAR_RD_type']="Fixed Threshold a*KSort"
+    empty['CFAR_RD_guard_cells']="40,40"
+    empty['CFAR_RD_training_cells']="10,10"
+    empty['CFAR_RD_alpha']=30.0
+    empty['CFAR_RD_false_alarm_rate']=1e-3
+    
+    empty['AzimuthWindow']  = 'Hamming'
+    empty['AzFFT_OverNextP2']=0
+    empty['ElevationWindow']  = 'Hamming'
+    empty['ElFFT_OverNextP2']=0
+    empty['AngleSpectrum']="Capon" # "FFT","Capon","Max (Old)"
+    empty['Capon Azimuth min:res:max:fine_res (deg)']="-60:3:60:1"
+    empty['Capon Elevation min:res:max:fine_res (deg)']="-60:3:60:1"
+    empty['CFAR_Angle_type']="No CFAR (max)"
+    empty['CFAR_Angle_guard_cells']="40,40"
+    empty['CFAR_Angle_training_cells']="10,10"
+    empty['CFAR_Angle_alpha']=5.0
+    empty['CFAR_Angle_false_alarm_rate']=.1
+    
+    
     
     empty['t_start_radar']=0
     empty['MaxRangeScatter']=1e12
     empty['SaveSignalGenerationTime']=True
     empty['continuousCPIsTrue_oneCPIpeerFrameFalse']=False
-    # empty['t_start_radar']=0
-    empty['MIMO_Tech']='TDM'
-    empty['ArrayInfofile']=''
     
+    empty['STC_Enabled']=False #
+    empty['MTI_Enabled']=False #
     
-    
-    
-    # empty['Timing'] = RadarTiming(t_start_radar=0.0, t_start_manual_restart_tx=1.0, t_last_pulse=10.0,
-    #                 t_current_pulse=5.0, pri_sequence=[0.1, 0.2, 0.15], n_pulse=7, n_last_cpi=1024)
+    empty["distance scaling"] = "1,1"
+    empty["VA order (TX,RX)->[X,Y]|"] = "(1,1)->[1,1]| "
+    empty["VA order2 (TX,RX)->[X,Y]|"] = ""
+    empty["MIMO_Tech"] = "TDM"
+    empty["MIMO_W"] = "(1+0j)"
 
+
+    empty['RangeDoppler CFAR Mean']=True
+    empty['Capon DL']="2"
     
     return empty
-    # , levels,,,
 
 
 
@@ -1766,7 +1790,32 @@ def rangeprocessing(x,specifications):
     
     return Xr,d_fft
 
+def clutter_removal(input_val, axis=0): #
+    # Reorder the axes
+    reordering = np.arange(len(input_val.shape))
+    reordering[0] = axis
+    reordering[axis] = 0
+    input_val = input_val.transpose(reordering)
+    # Apply static clutter removal
+    mean = input_val.mean(0)
+    output_val = input_val - mean
+    return output_val.transpose(reordering)
+
 def dopplerprocessing_mimodemodulation(x,specifications):
+    ClutterRemoval_Enabled = specifications.get('ClutterRemoval_Enabled', False)
+    if  ClutterRemoval_Enabled:
+        x = clutter_removal(x, axis=1) 
+    
+    if specifications['DopplerWindow'] == "Hamming":
+        slow_time_window = scipy.signal.windows.hamming(x.shape[1])
+    elif specifications['DopplerWindow'] == "Hann":
+        slow_time_window = scipy.signal.windows.hann(x.shape[1])
+    elif specifications['DopplerWindow'] == "Rectangular":
+        slow_time_window = np.ones(x.shape[1])
+    
+    
+    x = x * slow_time_window[ np.newaxis, :, np.newaxis]
+
     M_TX=specifications['M_TX']
     L = x.shape[1]
     Leff = int(L/M_TX)
@@ -1774,10 +1823,12 @@ def dopplerprocessing_mimodemodulation(x,specifications):
     MTI_Apply = specifications['MTI_Enabled']
     if specifications['DopplerProcessingMIMODemod']!='Simple':
         N_Doppler = Leff
-        N_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
+        if NFFT_Doppler_OverNextPow2>0:
+            N_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
         f_Doppler = np.arange(0,N_Doppler)/N_Doppler/specifications['PRI']/M_TX - 1/specifications['PRI']/M_TX / 2
         PRF_TDM = 1.0/specifications['PRI'] / M_TX
         f_Doppler = np.arange(0, N_Doppler) / N_Doppler * PRF_TDM - PRF_TDM/2
+        f_Doppler = np.fft.fftshift(np.fft.fftfreq(N_Doppler))*PRF_TDM
 
         PrecodingMatrixInv = np.linalg.pinv(specifications['PrecodingMatrix'])
         rangeDopplerTXRX = np.zeros((x.shape[0], f_Doppler.shape[0], M_TX, x.shape[2]),dtype=complex)
@@ -1810,10 +1861,13 @@ def dopplerprocessing_mimodemodulation(x,specifications):
         slow_time_window = scipy.signal.windows.hamming(rangePulseTXRX.shape[1])
         rangePulseTXRX_windowed = rangePulseTXRX * slow_time_window[ np.newaxis , : , np.newaxis, np.newaxis]
         NFFT_Doppler = int(2 ** (np.ceil(np.log2(Leff))+NFFT_Doppler_OverNextPow2))
+        if NFFT_Doppler_OverNextPow2<0:
+            NFFT_Doppler = Leff
         rangeDopplerTXRX = np.fft.fft(rangePulseTXRX_windowed, axis=1, n=NFFT_Doppler)
         rangeDopplerTXRX = np.fft.fftshift(rangeDopplerTXRX,axes=1)
         f_Doppler = np.arange(0,NFFT_Doppler)/NFFT_Doppler/specifications['PRI']/M_TX - 1/specifications['PRI']/M_TX / 2
-        
+        f_Doppler = np.fft.fftshift(np.fft.fftfreq(NFFT_Doppler))/specifications['PRI']/M_TX
+    
     return rangeDopplerTXRX,f_Doppler
 
 def rangedoppler_detection(x):
@@ -1832,22 +1886,53 @@ def rangedoppler_detection(x):
         detections,cfar_threshold = cfar_simple_2D(1.0*rangeDoppler4CFAR, 30)
     
     return detections,cfar_threshold,rangeDoppler4CFAR
-def rangedoppler_detection_alpha(x,specifications):
+def rangedoppler_detection_alpha(x,specifications,doCFAR=True):
     rangeDoppler4CFAR = np.mean(np.abs(x),axis=(2,3))
-    num_train = 50  # Number of training cells
-    num_guard = 4   # Number of guard cells
-    prob_fa = 1e-3  # Desired probability of false alarm
-    alpha = specifications['CFAR_RD_alpha']
-    # detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D(1.0*rangeDoppler4CFAR, num_train, num_guard, prob_fa)
+    if specifications['RangeDopplerCFARLogScale']:
+        rangeDoppler4CFAR = np.log10(rangeDoppler4CFAR + 1e-10)
+    
+    # alpha = specifications['CFAR_RD_alpha']
+    # # detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D(1.0*rangeDoppler4CFAR, num_train, num_guard, prob_fa)
+    # CUDA_signalGeneration_Enabled = bpy.data.objects["Simulation Settings"]["CUDA SignalGeneration Enabled"]
+    # if ssp.config.CUDA_is_available and CUDA_signalGeneration_Enabled and 0:
+    #     detections,cfar_threshold = cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
+    #     # detections,cfar_threshold = cfar_simple_max(1.0*rangeDoppler4CFAR)
+    # else:
+    #     # detections,cfar_threshold = cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
+    #     detections,cfar_threshold = cfar_simple_2D(1.0*rangeDoppler4CFAR, alpha)
     CUDA_signalGeneration_Enabled = bpy.data.objects["Simulation Settings"]["CUDA SignalGeneration Enabled"]
-    if ssp.config.CUDA_is_available and CUDA_signalGeneration_Enabled and 0:
-        detections,cfar_threshold = cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
-        # detections,cfar_threshold = cfar_simple_max(1.0*rangeDoppler4CFAR)
+    num_train, num_guard, alpha = [specifications['CFAR_RD_training_cells'],specifications['CFAR_RD_training_cells']], [specifications['CFAR_RD_guard_cells'],specifications['CFAR_RD_guard_cells']], specifications['CFAR_RD_alpha']
+    FIXEXTHR = False
+    if FIXEXTHR:
+        T = alpha * np.mean(rangeDoppler4CFAR)
+        cfar_threshold = T * np.ones_like(rangeDoppler4CFAR)
+        detections = np.zeros_like(rangeDoppler4CFAR)
+        detections[rangeDoppler4CFAR > T] = 1
     else:
-        # detections,cfar_threshold = cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR, [25,15], [10,10], 5)
-        detections,cfar_threshold = cfar_simple_2D(1.0*rangeDoppler4CFAR, alpha)
+        if ssp.config.CUDA_is_available and CUDA_signalGeneration_Enabled:
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, num_train, num_guard, alpha)
+        else:
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR,num_train, num_guard, alpha)
     
     return detections,cfar_threshold,rangeDoppler4CFAR
+
+def xyz_angleprocessing(x,detections,specifications):
+    if specifications['AngleSpectrum']=="FFT":
+        angle_window = scipy.signal.windows.hamming(x.shape[2])
+        x_windowed = x * angle_window[np.newaxis, np.newaxis, :]
+        NFFT_Angle_OverNextP2 = specifications['AzFFT_OverNextP2']
+        NAng = int(2 ** (np.ceil(np.log2(x.shape[2]))+NFFT_Angle_OverNextP2))
+        o = np.abs(np.fft.fftshift(np.fft.fft(x_windowed, axis=2, n=NAng), axes=2))
+        d_fft = np.arange(NAng) / NAng * 2 - 1
+        return o, d_fft
+    elif specifications['AngleSpectrum']=="Capon":
+        # Capon beamforming
+        # This is a placeholder for the Capon beamforming implementation
+        # You would need to implement the actual Capon beamforming algorithm here
+        raise NotImplementedError("Capon beamforming is not implemented yet.")
+    elif specifications['AngleSpectrum']=="Max (Old)":
+        1
+    
 
 def angleprocessing_CoArray(x,detections,d_fft,specifications,FigsAxes):
     ULA_TXRX_Lx_Ly_NonZ_AllRX=specifications['ULA_TXRX_Lx_Ly_NonZ']
@@ -2125,6 +2210,11 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
     radarIndex = max([int(plane.name.split('_')[2]) for plane in radar_planes if plane.parent == obj] or [-1]) + 1
     if radarSensor==RadarSensorsCategory.TI_Cascade_AWR2243:
         radar = ssp.radar.utils.predefined_array_configs_TI_Cascade_AWR2243(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 
+        radar["distance scaling"] = "1,1"
+        radar["VA order (TX,RX)->[X,Y]|"] = "(1,1)->[1,1] | (1,2)->[2,1] | (1,3)->[3,1] | (1,4)->[4,1] | (2,1)->[5,1] | (2,2)->[6,1] | (2,3)->[7,1] | (2,4)->[8,1] | (3,1)->[9,1] | (3,2)->[10,1] | (3,3)->[11,1] | (3,4)->[12,1] | (7,1)->[13,1] | (7,2)->[14,1] | (7,3)->[15,1] | (7,4)->[16,1] | (8,1)->[17,1] | (8,2)->[18,1] | (8,3)->[19,1] | (8,4)->[20,1] | (9,1)->[21,1] | (9,2)->[22,1] | (9,3)->[23,1] | (9,4)->[24,1] | (10,1)->[25,1] | (10,2)->[26,1] | (10,3)->[27,1] | (10,4)->[28,1] | (11,1)->[29,1] | (11,2)->[30,1] | (11,3)->[31,1] | (11,4)->[32,1] | (12,1)->[33,1] | (12,2)->[34,1] | (12,3)->[35,1] | (12,4)->[36,1] | (10,6)->[37,1] | (10,7)->[38,1] | (10,8)->[39,1] | (11,5)->[40,1] | (11,6)->[41,1] | (11,7)->[42,1] | (11,8)->[43,1] | (12,5)->[44,1] | (12,6)->[45,1] | (12,7)->[46,1] | (1,9)->[47,1] | (1,10)->[48,1] | (1,11)->[49,1] | (1,12)->[50,1] | (1,13)->[51,1] | (1,14)->[52,1] | (1,15)->[53,1] | (1,16)->[54,1] | (3,9)->[55,1] | (3,10)->[56,1] | (3,11)->[57,1] | (3,12)->[58,1] | (3,13)->[59,1] | (3,14)->[60,1] | (3,15)->[61,1] | (3,16)->[62,1] | (8,9)->[63,1] | (8,10)->[64,1] | (8,11)->[65,1] | (8,12)->[66,1] | (8,13)->[67,1] | (8,14)->[68,1] | (8,15)->[69,1] | (8,16)->[70,1] | (10,9)->[71,1] | (10,10)->[72,1] | (10,11)->[73,1] | (10,12)->[74,1] | (10,13)->[75,1] | (10,14)->[76,1] | (10,15)->[77,1] | (10,16)->[78,1] | (12,9)->[79,1] | (12,10)->[80,1] | (12,11)->[81,1] | (12,12)->[82,1] | (12,13)->[83,1] | (12,14)->[84,1] | (12,15)->[85,1] | (12,16)->[86,1] | "
+        radar["VA order2 (TX,RX)->[X,Y]|"] = "(1,1)->[1,1] |(4,1)->[1,2] |(5,1)->[1,3] |(6,1)->[1,4] |"
+        radar["MIMO_Tech"] = "TDM"
+        radar["MIMO_W"] = "(1+0j),0j,0j,0j,0j,0j,0j,0j,0j,0j,0j,0j;0j,(1+0j),0j,0j,0j,0j,0j,0j,0j,0j,0j,0j;0j,0j,(1+0j),0j,0j,0j,0j,0j,0j,0j,0j,0j;0j,0j,0j,(1+0j),0j,0j,0j,0j,0j,0j,0j,0j;0j,0j,0j,0j,(1+0j),0j,0j,0j,0j,0j,0j,0j;0j,0j,0j,0j,0j,(1+0j),0j,0j,0j,0j,0j,0j;0j,0j,0j,0j,0j,0j,(1+0j),0j,0j,0j,0j,0j;0j,0j,0j,0j,0j,0j,0j,(1+0j),0j,0j,0j,0j;0j,0j,0j,0j,0j,0j,0j,0j,(1+0j),0j,0j,0j;0j,0j,0j,0j,0j,0j,0j,0j,0j,(1+0j),0j,0j;0j,0j,0j,0j,0j,0j,0j,0j,0j,0j,(1+0j),0j;0j,0j,0j,0j,0j,0j,0j,0j,0j,0j,0j,(1+0j)"
         return radar
     if radarSensor==RadarSensorsCategory.Xhetru_X4:
         radar = ssp.radar.utils.predefined_array_configs_SISO(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=8e9)
@@ -2141,10 +2231,21 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         radar['PRI_us']= 1e6*recordedTimePerSample/gesture_motion_slowTimeFrames
         radar['NPulse'] = gesture_motion_slowTimeFrames
         radar['Range_End']=100 
+        radar["distance scaling"] = "1,1"
+        radar["VA order (TX,RX)->[X,Y]|"] = ""
+        radar["VA order2 (TX,RX)->[X,Y]|"] = ""
+        radar["MIMO_Tech"] = "TDM"
+        radar["MIMO_W"] = "1"
+        
         return radar
     
     if radarSensor==RadarSensorsCategory.TI_IWR6843:
         radar = ssp.radar.utils.predefined_array_configs_TI_IWR6843(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[2])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 
+        radar["distance scaling"] = "1,1"
+        radar["VA order (TX,RX)->[X,Y]|"] = "(1,1)->[1,1] | (1,2)->[2,1] | (1,3)->[3,1] | (1,4)->[4,1] | (2,1)->[5,1] | (2,2)->[6,1] | (2,3)->[7,1] | (2,4)->[8,1] | (3,1)->[9,1] | (3,2)->[10,1] | (3,3)->[11,1] | (3,4)->[12,1] | "
+        radar["VA order2 (TX,RX)->[X,Y]|"] = ""
+        radar["MIMO_Tech"] = "TDM"
+        radar["MIMO_W"] = "(1+0j),0j,0j;0j,(1+0j),0j;0j,0j,(1+0j)"
         return radar
     # if radarSensor==RadarSensorsCategory.:
     #     radar = ssp.radar.utils.predefined_array_configs_infineon_BGT24LTR11_CW(isuite=suiteIndex, iradar=radarIndex, location=Vector((location_xyz[0], location_xyz[1],location_xyz[1])), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=76e9) 
@@ -2163,6 +2264,11 @@ def addRadar(radarSensor=RadarSensorsCategory.TI_AWR1642,location_xyz=[0,0,0]):
         radar['Transmit_Antenna_Element_Pattern']='Directional-Sinc' # add rect pattern
         radar["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = 60
         radar["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = 60
+        radar["distance scaling"] = "1,1"
+        radar["VA order (TX,RX)->[X,Y]|"] = "(1,1)->[1,1] | (1,2)->[2,1] | (1,3)->[3,1] | (1,4)->[4,1] | (2,1)->[5,1] | (2,2)->[6,1] | (2,3)->[7,1] | (2,4)->[8,1] | "
+        radar["VA order2 (TX,RX)->[X,Y]|"] = ""
+        radar["MIMO_Tech"] = "TDM"
+        radar["MIMO_W"] = "(1+0j),0j;0j,(1+0j)"
         return radar
     if radarSensor==RadarSensorsCategory.ULA_AllRX:
         N = ssp.config.AddRadar_ULA_N

@@ -2,7 +2,10 @@ import sensingsp as ssp
 import numpy as np
 
 from matplotlib import pyplot as plt
-        
+import scipy
+import os
+from mathutils import Vector
+import bpy
 def RayTracing():
     distance = np.array([])
     while ssp.config.run():
@@ -176,17 +179,6 @@ def TDM_PhaseCompensation(S_IF_krange_ldoppler_pva,radarParameters,fd):
     S_IF_krange_ldoppler_pva *= TDM_MIMO_phase_compensation[np.newaxis, : , : ]
     return S_IF_krange_ldoppler_pva
 
-# def CFAR2D(S_IF_krange_ldoppler_pva,alpha=5,MaxOnly=True):
-#     range_axe, SlowTime_axe, VA_axe = 0,1,2
-#     THR = alpha*np.mean(np.abs(S_IF_krange_ldoppler_pva))
-#     if MaxOnly:
-#         detections = 
-#         detectionSignal = S_IF_krange_ldoppler_pva[detections[0],detections[1],:]
-#         return detections, detectionSignal    
-#     detections = np.where(np.mean(np.abs(S_IF_krange_ldoppler_pva),axis=VA_axe)>THR)
-#     detectionSignal = S_IF_krange_ldoppler_pva[detections[0],detections[1],:]
-#     return detections, detectionSignal     
-
 def CFAR2D(S_IF_krange_ldoppler_pva, alpha=5, MaxOnly=True):
     range_axe, SlowTime_axe, VA_axe = 0, 1, 2
     
@@ -339,3 +331,477 @@ def setMIMO(radar , inputMIMORadarTechnique):
     if inputMIMORadarTechnique == ssp.radar.utils.MIMORadarTechnique.BPM:
         radar['MIMO_Tech']='BPM'
     # elif 
+
+def ui_frame_processing(QtApp):
+    for a in QtApp.axes:
+        a.cla()
+    if ssp.config.CurrentFrame + 1 > ssp.config.get_frame_end():
+        QtApp.statusBar().showMessage("No more frames to process.")
+        ssp.radar.utils.apps.process_events()
+        return
+    if QtApp.combo2.count()==0:
+        return
+    if QtApp.combo.currentText()==["RD-Det-Ang-Det", "VitalSign"][1]:
+        QtApp.vs_processing()
+        return
+    isuite = int(QtApp.combo2.currentText().split(',')[0])
+    iradar = int(QtApp.combo2.currentText().split(',')[1])
+    specifications = ssp.RadarSpecifications[isuite][iradar]
+    QtApp.statusBar().showMessage("raytracing ...")
+    ssp.radar.utils.apps.process_events()
+    path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+    mem = ssp.radar.utils.apps.guess_memory_usage(path_d_drate_amp)
+    QtApp.statusBar().showMessage(f"{mem} bytes rays, SensorsSignalGeneration ...")
+    ssp.radar.utils.apps.process_events()
+    Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+    
+    pointcloud_axe_parent = QtApp.pointcloud_axe()
+    
+    if len(Signals[isuite]['radars'][iradar])==0:
+        return
+    XRadar,t = Signals[isuite]['radars'][iradar][0]
+    
+    FMCW_ChirpSlobe = specifications['FMCW_ChirpSlobe']
+    Ts = specifications['Ts']
+    PRI = specifications['PRI']
+    PrecodingMatrix = specifications['PrecodingMatrix']
+    RadarMode = specifications['RadarMode']
+    
+    QtApp.axes[1].plot(np.real(XRadar[:, 0, 0]), label="Real Part")
+    QtApp.axes[1].plot(np.imag(XRadar[:, 0, 0]), label="Imaginary Part")
+    QtApp.axes[1].set_xlabel("ADC Samples")
+    QtApp.axes[1].set_ylabel("ADC Output Level")
+    QtApp.axes[1].legend(loc='upper right')
+    QtApp.axes[0].imshow(np.abs(XRadar[:, :, 0]),extent=[1*PRI, XRadar.shape[1]*PRI, 1, XRadar.shape[0]],
+                        aspect='auto', origin='lower')
+    QtApp.axes[0].set_xlabel("Slow time")
+    QtApp.axes[0].set_ylabel("ADC Samples")
+    
+    QtApp.statusBar().showMessage("Range Doppler Processing ...")
+    ssp.radar.utils.apps.process_events()
+    
+    if specifications['RangeWindow'] == "Hamming":
+        fast_time_window = scipy.signal.windows.hamming(XRadar.shape[0])
+    elif specifications['RangeWindow'] == "Hann":
+        fast_time_window = scipy.signal.windows.hann(XRadar.shape[0])
+    elif specifications['RangeWindow'] == "Rectangular":
+        fast_time_window = np.ones(XRadar.shape[0])
+    else:
+        QtApp.statusBar().showMessage(f"Unknown RangeWindow: {specifications['RangeWindow']}")
+        return
+    
+    X_windowed_fast = XRadar * fast_time_window[:, np.newaxis, np.newaxis]
+
+    NFFT_Range_OverNextPow2 =  specifications['RangeFFT_OverNextP2']
+    if NFFT_Range_OverNextPow2 < 0:
+        NFFT_Range = XRadar.shape[0]
+    else:
+        NFFT_Range = int(2 ** (np.ceil(np.log2(XRadar.shape[0]))+NFFT_Range_OverNextPow2))
+    X_fft_fast = np.fft.fft(X_windowed_fast, axis=0, n=NFFT_Range)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+    d_fft = np.arange(NFFT_Range) * ssp.LightSpeed / 2 / FMCW_ChirpSlobe / NFFT_Range / Ts
+    Range_Start = specifications['Range_Start']
+    Range_End = specifications['Range_End']
+    d1i = int(X_fft_fast.shape[0]*Range_Start/100.0)
+    d2i = int(X_fft_fast.shape[0]*Range_End/100.0)
+    d_fft = d_fft[d1i:d2i]
+    X_fft_fast = X_fft_fast[d1i:d2i,:,:] 
+    
+    QtApp.axes[3].plot(d_fft, np.abs(X_fft_fast[:, 0, 0]))
+    QtApp.axes[3].set_xlabel("Range (m)")
+    QtApp.axes[3].set_ylabel("Range Profile")
+    QtApp.axes[2].imshow(np.abs(X_fft_fast[:, :, 0]),
+                        extent=[1*PRI, XRadar.shape[1]*PRI, d_fft[0], d_fft[-1]],
+                        aspect='auto', origin='lower')
+    QtApp.axes[2].set_xlabel("Slow time")
+    QtApp.axes[2].set_ylabel("Range")
+    
+    
+    # specifications['Pulse_Buffering'] = BlenderAddon['Pulse_Buffering']
+    
+    rangeDopplerTXRX, f_Doppler = ssp.radar.utils.dopplerprocessing_mimodemodulation(X_fft_fast, specifications)
+
+    
+
+    if specifications['RangeDoppler CFAR Mean']:
+        rangeDoppler4CFAR = np.mean(np.abs(rangeDopplerTXRX),axis=(2,3))
+    else:
+        rangeDoppler4CFAR = np.abs(rangeDopplerTXRX[:, :, 0, 0])
+
+    if specifications['RangeDopplerCFARLogScale']==True:
+        rangeDoppler4CFAR = np.log10(rangeDoppler4CFAR + 1e-10)
+        rangeDoppler4CFAR -= np.min(rangeDoppler4CFAR)
+
+    im = QtApp.axes[4].imshow(np.abs(rangeDopplerTXRX[:, :, 0, 0]),
+                            extent=[f_Doppler[0], f_Doppler[-1], d_fft[0], d_fft[-1]],
+                            aspect='auto', origin='lower')
+    QtApp.axes[4].set_xlabel("Doppler Frequency (Hz)")
+    QtApp.axes[4].set_ylabel("Range (m)")
+    
+    distance = np.linspace(d_fft[0], d_fft[-1], rangeDoppler4CFAR.shape[0])  # Replace with real distance data
+    elevation = np.linspace(f_Doppler[0],f_Doppler[-1], rangeDoppler4CFAR.shape[1])  # Replace with real angle data
+    X, Y = np.meshgrid(elevation, distance)
+    # FigsAxes[1,2].plot_surface(X, Y, 10*np.log10(rangeDoppler4CFAR), cmap='viridis', alpha=1)
+    QtApp.axes[5].plot_surface(X, Y, (rangeDoppler4CFAR), cmap='viridis', alpha=1)
+    QtApp.axes[5].set_xlabel('Doppler (Hz)')
+    QtApp.axes[5].set_ylabel('Distance (m)')
+    QtApp.axes[5].set_zlabel('Magnitude (normalized, dB)')
+
+    if QtApp.doCFARCB.isChecked() == False:
+        QtApp.canvas.draw()
+        QtApp.canvas.flush_events()
+        ssp.utils.increaseCurrentFrame()
+        return
+    QtApp.statusBar().showMessage("Range Doppler CFAR ...")
+    ssp.radar.utils.apps.process_events()
+    num_train = [int(specifications['CFAR_RD_training_cells'].split(',')[0]), int(specifications['CFAR_RD_training_cells'].split(',')[1])]
+    num_guard = [int(specifications['CFAR_RD_guard_cells'].split(',')[0]), int(specifications['CFAR_RD_guard_cells'].split(',')[1])]
+    alpha = float(specifications['CFAR_RD_alpha'])
+    if specifications['CFAR_RD_type'] == "CA CFAR":
+        if ssp.config.GPU_run_available():
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*rangeDoppler4CFAR, num_train, num_guard, alpha)
+        else:
+            detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*rangeDoppler4CFAR,num_train, num_guard, alpha)
+        cfar_threshold*=alpha
+    elif specifications['CFAR_RD_type'] == "OS CFAR":
+        QtApp.cfar_rd_type.setCurrentText("OS CFAR")
+        return
+    elif specifications['CFAR_RD_type'] == "Fixed Threshold":
+        T = alpha 
+        cfar_threshold = T * np.ones_like(rangeDoppler4CFAR)
+        detections = np.zeros_like(rangeDoppler4CFAR)
+        detections[rangeDoppler4CFAR > T] = 1
+    elif specifications['CFAR_RD_type'] == "Fixed Threshold a*mean":
+        T = alpha * np.mean(rangeDoppler4CFAR)
+        cfar_threshold = T * np.ones_like(rangeDoppler4CFAR)
+        detections = np.zeros_like(rangeDoppler4CFAR)
+        detections[rangeDoppler4CFAR > T] = 1
+    elif specifications['CFAR_RD_type'] == "Fixed Threshold a*KSort":
+        
+        # N = int(.9*rangeDoppler4CFAR.shape[0] * rangeDoppler4CFAR.shape[1])
+        N = rangeDoppler4CFAR.shape[0] * rangeDoppler4CFAR.shape[1]-1-num_guard[0]
+        if N<0:
+            N=0
+        T = alpha * np.partition(rangeDoppler4CFAR.ravel(), N)[N]
+        cfar_threshold = T * np.ones_like(rangeDoppler4CFAR)
+        detections = np.zeros_like(rangeDoppler4CFAR)
+        detections[rangeDoppler4CFAR > T] = 1
+        
+    elif specifications['CFAR_RD_type'] == "No CFAR (max)":
+        max_idx = np.unravel_index(np.argmax(rangeDoppler4CFAR), rangeDoppler4CFAR.shape)
+        detections = np.zeros_like(rangeDoppler4CFAR)
+        detections[max_idx] = 1
+        cfar_threshold = np.full_like(rangeDoppler4CFAR, rangeDoppler4CFAR[max_idx])
+    all_xyz=[]
+
+    # detections,cfar_threshold = ssp.radar.utils.cfar_simple_2D(1.0*rangeDoppler4CFAR, 30)
+    # fig = plt.figure(figsize=(10, 8))
+    # ax = fig.add_subplot(111, projection='3d')
+    
+    # FigsAxes[1,2].plot_surface(X, Y, (cfar_threshold)+0, color='yellow', alpha=1)
+    detected_points = np.where(detections == 1)
+    QtApp.axes[5].scatter(elevation[detected_points[1]], distance[detected_points[0]], 
+                (rangeDoppler4CFAR[detected_points]), color='red', s=20, label='Post-CFAR Point Cloud')
+    
+    # Labels and legend
+    if  QtApp.thrCH.isChecked():
+        
+        QtApp.axes[5].plot_surface(X,Y,(cfar_threshold), color='orange', alpha=1)
+    NDetection = detected_points[0].shape[0]
+
+    if specifications["AngleSpectrum"] == "FFT":
+        rangeVA = np.zeros((int(np.max(specifications['vaorder'][:,2])),int(np.max(specifications['vaorder'][:,3]))),dtype=rangeDopplerTXRX.dtype)
+        Lambda = 1.0
+        AzELscale = specifications['distance scaling'].split(',')
+        AzELscale = [float(AzELscale[0]), float(AzELscale[1])]
+        dy = .5*Lambda*AzELscale[0]
+        dz = .5*Lambda*AzELscale[1]
+        ampmax = 0
+        for id in range(NDetection):
+            QtApp.statusBar().showMessage(f"Angle Processing {id} from {NDetection} ...")
+            ssp.radar.utils.apps.process_events()
+            rangeTarget = d_fft[detected_points[0][id]]
+            dopplerTarget = f_Doppler[detected_points[1][id]]
+            
+            antennaSignal = rangeDopplerTXRX[detected_points[0][id],detected_points[1][id],:,:]
+            for indx in specifications['vaorder']:
+                rangeVA[int(indx[2]-1), int(indx[3]-1)] = antennaSignal[int(indx[0]-1), int(indx[1]-1)]
+            NFFT_Angle_OverNextPow2 = specifications['AzFFT_OverNextP2']
+            if NFFT_Angle_OverNextPow2 < 0:
+                NFFT_Angle = rangeVA.shape[0]
+            else:
+                NFFT_Angle = int(2 ** (np.ceil(np.log2(rangeVA.shape[0]))+NFFT_Angle_OverNextPow2))
+            NFFT_Angle_OverNextPow_elevation = specifications['ElFFT_OverNextP2']
+            if NFFT_Angle_OverNextPow_elevation < 0:
+                NFFT_Angle_elevation = rangeVA.shape[1]
+            else:
+                NFFT_Angle_elevation = int(2 ** (np.ceil(np.log2(rangeVA.shape[1]))+NFFT_Angle_OverNextPow_elevation))
+            AngleMap0 = np.fft.fft(rangeVA, axis=0, n=NFFT_Angle)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+            AngleMap0 = np.fft.fftshift(AngleMap0, axes=0)
+            AngleMap = np.fft.fft(AngleMap0, axis=1, n=NFFT_Angle_elevation)  # beat freq = Slobe * 2 * d / c =   ind / nfft * Fs ->
+            AngleMap = np.fft.fftshift(AngleMap, axes=1)
+            AngleMap = np.abs(AngleMap)
+            a = np.fft.fftshift(np.fft.fftfreq(AngleMap.shape[0]))
+            b = np.fft.fftshift(np.fft.fftfreq(AngleMap.shape[1]))
+                
+            X, Y = np.meshgrid(b, a)
+            num_train = [int(specifications['CFAR_Angle_training_cells'].split(',')[0]), int(specifications['CFAR_Angle_training_cells'].split(',')[1])]
+            num_guard = [int(specifications['CFAR_Angle_guard_cells'].split(',')[0]), int(specifications['CFAR_RD_guard_cells'].split(',')[1])]
+            alpha = float(specifications['CFAR_Angle_alpha'])
+            if specifications['CFAR_Angle_type'] == "CA CFAR":
+                if ssp.config.GPU_run_available():
+                    detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*AngleMap, num_train, num_guard, alpha)
+                else:
+                    detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*AngleMap,num_train, num_guard, alpha)
+                cfar_threshold*=alpha
+            elif specifications['CFAR_Angle_type'] == "OS CFAR":
+                QtApp.cfar_rd_type.setCurrentText("OS CFAR")
+                return
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold":
+                T = alpha 
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold a*mean":
+                T = alpha * np.mean(AngleMap)
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold a*KSort":
+                N = int(.9*AngleMap.shape[0] * AngleMap.shape[1])
+                T=alpha * np.partition(AngleMap.ravel(), N)[N]
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+                
+            elif specifications['CFAR_Angle_type'] == "No CFAR (max)":
+                max_idx = np.unravel_index(np.argmax(AngleMap), AngleMap.shape)
+                detections = np.zeros_like(AngleMap)
+                detections[max_idx] = 1
+                cfar_threshold = np.full_like(AngleMap, AngleMap[max_idx])
+            detected_points_angle = np.where(detections == 1)
+            NDetection_angle = detected_points_angle[0].shape[0]
+            for id_angle in range(NDetection_angle):
+                amp = AngleMap[detected_points_angle[0][id_angle],detected_points_angle[1][id_angle]]
+                
+                if ampmax < amp:
+                    ampmax = amp
+                    AngleMapmax = AngleMap
+                    detected_points_anglemax = detected_points_angle
+                    cfar_thresholdmax = cfar_threshold
+                fy = a[detected_points_angle[0][id_angle]] / dy
+                fz = b[detected_points_angle[1][id_angle]] / dz
+                azhat = np.arcsin(fy / np.sqrt((1/Lambda)**2 - fz**2))
+                elhat = np.arccos(fz * Lambda)
+                elhat = np.pi/2 - elhat
+                x, y, z = ssp.utils.sph2cart(rangeTarget, azhat, elhat)
+                x, y, z = y,z,-x
+                global_location, global_rotation, global_scale = specifications['matrix_world']  
+                local_point = Vector((x, y, z))
+                global_point = global_location + global_rotation @ (local_point * global_scale)
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=.03, location=global_point)
+                sphere = bpy.context.object
+                sphere.parent=pointcloud_axe_parent
+                x = global_point.x
+                y = global_point.y
+                z = global_point.z
+                all_xyz.append([x,y,z,amp,dopplerTarget])
+        QtApp.axes[6].cla()
+        if NDetection>0:
+            if AngleMap.shape[1]>1:
+                QtApp.axes[6].plot_surface(X,Y,(AngleMapmax), cmap='viridis', alpha=1)
+                QtApp.axes[6].scatter(b[detected_points_anglemax[1]],a[detected_points_anglemax[0]], 
+                            (AngleMapmax[detected_points_anglemax]), color='red', s=20, label='Post-CFAR Point Cloud')
+                if  QtApp.thrCH.isChecked():
+                    QtApp.axes[6].plot_surface(X,Y,cfar_thresholdmax, color='orange', alpha=1)
+            else:
+                QtApp.axes[6].plot(Y[:,0],AngleMapmax[:,0])
+                QtApp.axes[6].plot(a[detected_points_anglemax[0]],AngleMapmax[detected_points_anglemax],'or')
+                if  QtApp.thrCH.isChecked():
+                    QtApp.axes[6].plot(Y[:,0],cfar_thresholdmax[:,0])
+                    
+    elif specifications["AngleSpectrum"] == "Capon":
+        min_deg, res_deg, max_deg, fine_res_deg = specifications['Capon Azimuth min:res:max:fine_res']
+        min_deg2, res_deg2, max_deg2, fine_res_deg2 = specifications['Capon Elevation min:res:max:fine_res']
+        ampmax = 0
+        for id in range(NDetection):
+            QtApp.statusBar().showMessage(f"Angle Processing {id} from {NDetection} ...")
+            ssp.radar.utils.apps.process_events()
+            rangeTarget = d_fft[detected_points[0][id]]
+            dopplerTarget = f_Doppler[detected_points[1][id]]
+            
+            antennaSignal = rangeDopplerTXRX[detected_points[0][id],detected_points[1][id],:,:]
+            sig0 = antennaSignal.reshape(-1, 1)
+            Ndim = specifications['array_geometry'].shape[0]
+            
+            if specifications['Capon DL']>10:
+                R_inv = np.eye(Ndim)
+            else:
+                R = np.zeros((Ndim, Ndim), dtype=np.complex64)
+                k=0
+                for i in range(rangeDopplerTXRX.shape[1]):
+                    if np.abs(i-detected_points[1][id]) <= .2*rangeDopplerTXRX.shape[1]:
+                        continue
+                    sig = rangeDopplerTXRX[detected_points[0][id],i,:,:]
+                    sig = sig.reshape(-1, 1)  
+                    R += sig @ sig.conj().T 
+                    k += 1
+                if k == 0:
+                    R = np.eye(Ndim)
+                R = R / k  # average covariance matrix
+
+                R = R / np.linalg.norm(R)  # normalize the covariance matrix
+                R_inv = np.linalg.inv(R + specifications['Capon DL']*np.eye(Ndim))
+            
+            azimuth_angles = np.arange(min_deg, max_deg + res_deg, res_deg)
+            elevation_angles = np.arange(min_deg2, max_deg2 + res_deg2, res_deg2)
+            
+            AngleMap = np.zeros((len(azimuth_angles), len(elevation_angles)), dtype=np.float32)
+
+
+            for j, el in enumerate(elevation_angles):
+                for i, az in enumerate(azimuth_angles):
+                    theta = np.deg2rad(az)       # azimuth
+                    phi = np.deg2rad(el)         # elevation
+                    wavelength = 2
+                    k_vec = (2 * np.pi / wavelength) * np.array([
+                        np.cos(phi) * np.cos(theta),
+                        np.cos(phi) * np.sin(theta),
+                        np.sin(phi)
+                    ])
+                    steering = np.exp(-1j * (specifications['array_geometry'] @ k_vec)).reshape(-1, 1)
+                    w = R_inv @ steering / (np.conj(steering.T) @ R_inv @ steering)
+                    p = np.conj(w.T) @ sig0
+                    AngleMap[i, j] = np.abs(p.squeeze())
+            
+            
+            num_train = [int(specifications['CFAR_Angle_training_cells'].split(',')[0]), int(specifications['CFAR_Angle_training_cells'].split(',')[1])]
+            num_guard = [int(specifications['CFAR_Angle_guard_cells'].split(',')[0]), int(specifications['CFAR_RD_guard_cells'].split(',')[1])]
+            alpha = float(specifications['CFAR_Angle_alpha'])
+            if specifications['CFAR_Angle_type'] == "CA CFAR":
+                if ssp.config.GPU_run_available():
+                    detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha_cuda(1.0*AngleMap, num_train, num_guard, alpha)
+                else:
+                    detections,cfar_threshold = ssp.radar.utils.cfar_ca_2D_alpha(1.0*AngleMap,num_train, num_guard, alpha)
+                cfar_threshold*=alpha
+            elif specifications['CFAR_Angle_type'] == "OS CFAR":
+                QtApp.cfar_rd_type.setCurrentText("OS CFAR")
+                return
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold":
+                T = alpha 
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold a*mean":
+                T = alpha * np.mean(AngleMap)
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+            elif specifications['CFAR_Angle_type'] == "Fixed Threshold a*KSort":
+                N = int(.9*AngleMap.shape[0] * AngleMap.shape[1])
+                T=alpha * np.partition(AngleMap.ravel(), N)[N]
+                cfar_threshold = T * np.ones_like(AngleMap)
+                detections = np.zeros_like(AngleMap)
+                detections[AngleMap > T] = 1
+                
+            elif specifications['CFAR_Angle_type'] == "No CFAR (max)":
+                max_idx = np.unravel_index(np.argmax(AngleMap), AngleMap.shape)
+                detections = np.zeros_like(AngleMap)
+                detections[max_idx] = 1
+                cfar_threshold = np.full_like(AngleMap, AngleMap[max_idx])
+            detected_points_angle = np.where(detections == 1)
+            NDetection_angle = detected_points_angle[0].shape[0]
+            for id_angle in range(NDetection_angle):
+                amp = AngleMap[detected_points_angle[0][id_angle],detected_points_angle[1][id_angle]]
+                if ampmax < amp:
+                    ampmax = amp
+                    AngleMapmax = AngleMap
+                    detected_points_anglemax = detected_points_angle
+                    cfar_thresholdmax = cfar_threshold
+
+                azhat = np.deg2rad(azimuth_angles[detected_points_angle[0][id_angle]])
+                elhat = np.deg2rad(elevation_angles[detected_points_angle[1][id_angle]])
+                x, y, z = ssp.utils.sph2cart(rangeTarget, azhat, elhat)
+                x, y, z = y,z,-x
+                global_location, global_rotation, global_scale = specifications['matrix_world']  
+                local_point = Vector((x, y, z))
+                global_point = global_location + global_rotation @ (local_point * global_scale)
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=.03, location=global_point)
+                sphere = bpy.context.object
+                sphere.parent=pointcloud_axe_parent
+                x = global_point.x
+                y = global_point.y
+                z = global_point.z
+                all_xyz.append([x,y,z,amp,dopplerTarget])
+            X, Y = np.meshgrid(elevation_angles, azimuth_angles)
+        QtApp.axes[6].cla()
+        if NDetection>0:
+            if AngleMap.shape[1]>1:
+                QtApp.axes[6].plot_surface(X,Y,(AngleMapmax), cmap='viridis', alpha=1)
+                QtApp.axes[6].scatter(elevation_angles[detected_points_anglemax[1]],azimuth_angles[detected_points_anglemax[0]], 
+                            (AngleMapmax[detected_points_anglemax]), color='red', s=20, label='Post-CFAR Point Cloud')
+                if  QtApp.thrCH.isChecked():
+                    QtApp.axes[6].plot_surface(X,Y,cfar_thresholdmax, color='orange', alpha=1)
+            else:
+                QtApp.axes[6].plot(Y[:,0],AngleMapmax[:,0])
+                QtApp.axes[6].plot(azimuth_angles[detected_points_anglemax[0]],AngleMapmax[detected_points_anglemax],'or')
+                if  QtApp.thrCH.isChecked():
+                    QtApp.axes[6].plot(Y[:,0],alpha*cfar_thresholdmax[:,0])
+                    
+        
+    points = np.array(all_xyz)
+    if points.shape[0]>0:
+        ampcolor = QtApp.combocolor.currentText()
+        if ampcolor == 'Amp':
+            QtApp.axes[7].scatter(points[:, 0], points[:, 1],points[:, 2], c=points[:, 3], marker='o') 
+        if ampcolor == 'Doppler':
+            QtApp.axes[7].scatter(points[:, 0], points[:, 1],points[:, 2], c=points[:, 4], marker='o') 
+            
+    QtApp.axes[7].plot(0, 0, 0, 'o', markersize=5, color='red')
+    QtApp.axes[7].plot([0,5], [0,0], [0,0], color='red')
+    QtApp.axes[7].set_xlabel('X (m)')
+    QtApp.axes[7].set_ylabel('Y (m)')
+    QtApp.axes[7].set_zlabel('Z (m)')
+    QtApp.axes[7].set_title("Detected Points")
+    ssp.utils.set_axes_equal(QtApp.axes[7])
+    
+    QtApp.canvas.draw()
+    QtApp.canvas.flush_events()
+    if QtApp.combosave.currentText()=="Point Cloud":
+        fn = f'PointCloud_frame_{ssp.config.CurrentFrame}.mat'
+        if "Simulation Settings" in bpy.data.objects:
+            if "Radar Outputs Folder" in bpy.data.objects["Simulation Settings"]:
+                fp= bpy.data.objects["Simulation Settings"]["Radar Outputs Folder"]
+                if not os.path.exists(fp):
+                    os.makedirs(fp)
+                fn = os.path.join(fp,fn)
+                scipy.io.savemat(fn, {
+                        'points'    : points,
+                        'frame': ssp.config.CurrentFrame
+                    })
+    if QtApp.combosave.currentText()=="Raw DataCube":
+        fn = f'Signals_frame_{ssp.config.CurrentFrame}.mat'
+        if "Simulation Settings" in bpy.data.objects:
+            if "Radar Outputs Folder" in bpy.data.objects["Simulation Settings"]:
+                fp= bpy.data.objects["Simulation Settings"]["Radar Outputs Folder"]
+                if not os.path.exists(fp):
+                    os.makedirs(fp)
+                fn = os.path.join(fp,fn)
+                rangePulseTXRX = []
+                XRadar,X_windowed_fast,rangePulseTXRX,d_fft,rangeDopplerTXRX,f_Doppler,rangeDoppler4CFAR
+                scipy.io.savemat(fn, {
+                        'frame'             : ssp.config.CurrentFrame,
+                        'XRadar'            : XRadar,
+                        'X_windowed_fast'   : X_windowed_fast,
+                        'rangePulseTXRX'    : rangePulseTXRX,
+                        'd_fft'             : d_fft,
+                        'rangeDopplerTXRX'  : rangeDopplerTXRX,
+                        'f_Doppler'         : f_Doppler,
+                        'rangeDoppler4CFAR' : rangeDoppler4CFAR,
+                    })
+    
+    
+    
+    
+    
+    QtApp.statusBar().showMessage(f'processed frame = {ssp.config.CurrentFrame}')
+    ssp.utils.increaseCurrentFrame()

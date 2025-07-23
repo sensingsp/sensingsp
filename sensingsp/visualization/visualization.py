@@ -3,8 +3,6 @@ from matplotlib import pyplot as plt
 import bpy
 from mathutils import Vector
 
-# import matplotlib
-# matplotlib.use('qtagg')
 import sensingsp as ssp
 
 def plot_tiangles(Triangles):

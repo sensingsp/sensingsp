@@ -300,7 +300,7 @@ def zeroDopplerCancellation_4Simulation(path_d_drate_amp,attenuation_dB=80):
                 if d_drate_amp[1]==0:
                   d_drate_amp[2]*=attenuation
 
-def trimUserInputs():
+def trimUserInputs0():
     bpy.ops.object.select_all(action='DESELECT')
     for obj in bpy.context.scene.objects:
       if obj.type == 'MESH':
@@ -327,17 +327,13 @@ def trimUserInputs():
       for iradar,radarobject in enumerate(suiteobject['Radar']):
         specifications={}
 
-        # empty["Transmit_Power_dBm"] = 12
-        # empty["Center_Frequency_GHz"] = f0/1e9
-        # empty['Fs_MHz']=5
-        # empty['FMCW_ChirpTime_us'] = 60 automatically set to = N_ADC * Ts
-
+        specifications['Lambda']=ssp.constants.LightSpeed/radarobject['GeneralRadarSpec_Object']["Center_Frequency_GHz"]/1e9
+        # Transmit_Power_dBm  used in Tx-Power of suites 
         specifications['PRI']=radarobject['GeneralRadarSpec_Object']['PRI_us']*1e-6
         specifications['Ts']=1e-6/radarobject['GeneralRadarSpec_Object']['Fs_MHz']
         specifications['NPulse'] = radarobject['GeneralRadarSpec_Object']['NPulse']
         specifications['N_ADC']  = radarobject['GeneralRadarSpec_Object']['N_ADC']
         
-        specifications['Lambda']=ssp.constants.LightSpeed/radarobject['GeneralRadarSpec_Object']["Center_Frequency_GHz"]/1e9
         specifications['RadarMode']=radarobject['GeneralRadarSpec_Object']['RadarMode']
         specifications['PulseWaveform']=radarobject['GeneralRadarSpec_Object']['PulseWaveform']
         # specifications['FMCW_Bandwidth']=radarobject['GeneralRadarSpec_Object']['FMCW_Bandwidth_GHz']*1e9
@@ -368,6 +364,8 @@ def trimUserInputs():
                                                                     M=len(radarobject['TX']),
                                                                     tech=specifications['MIMO_Tech'])
         specifications['DopplerProcessingMIMODemod'] = radarobject['GeneralRadarSpec_Object']['DopplerProcessingMIMODemod']
+        specifications['RangeDopplerCFARLogScale'] = radarobject['GeneralRadarSpec_Object']['RangeDopplerCFARLogScale']
+        specifications['AngleSpectrum'] = radarobject['GeneralRadarSpec_Object']['AngleSpectrum']
         
         specifications['ADC_peak2peak'] = radarobject['GeneralRadarSpec_Object']['ADC_peak2peak']
         specifications['ADC_levels'] = radarobject['GeneralRadarSpec_Object']['ADC_levels']
@@ -488,7 +486,7 @@ def trimUserInputs():
         specifications['TXRXPos']=radarobject['GeneralRadarSpec_Object']["TXRXPos"]
         vainfo = ssp.radar.utils.virtualArray_info(tx_positions,rx_positions)
         specifications['ULA_TXRX_Lx_Ly_NonZ']=vainfo
-        
+        specifications['BlenderObject']=radarobject['GeneralRadarSpec_Object']
         radarSpecifications.append(specifications)
       RadarSpecifications.append(radarSpecifications)
       
@@ -497,6 +495,37 @@ def trimUserInputs():
     # if os.path.exists('frames'):
     #     shutil.rmtree('frames')
     # os.makedirs('frames')
+    ssp.RadarSpecifications = RadarSpecifications
+def trimUserInputs():
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.context.scene.objects:
+      if obj.type == 'MESH':
+            if "RCS0" in obj:
+                obj["RCS0"] = float(obj["RCS0"])
+    current_working_directory = os.getcwd()
+    if "Simulation Settings" in bpy.data.objects:
+        sim_axes = bpy.data.objects["Simulation Settings"]
+        RenderBlenderFrames = bpy.data.objects["Simulation Settings"]["Render Blender Frames"]
+        video_directory = bpy.data.objects["Simulation Settings"]["Video Directory"]
+        open_output_folder = bpy.data.objects["Simulation Settings"]["Open Output Folder"]
+    else:
+        RenderBlenderFrames = True
+        video_directory = current_working_directory
+        open_output_folder = True
+    RadarSpecifications = []
+    suite_information = BlenderSuiteFinder().find_suite_information()
+    
+    ssp.suite_information = suite_information
+    # suite_information= finder.find_suite_information()
+    mimo_Functions = MIMO_Functions()
+    for isuite,suiteobject in enumerate(suite_information):
+      radarSpecifications=[]
+      for iradar,radarobject in enumerate(suiteobject['Radar']):
+        specifications={}
+        ssp.utils.BlenderAddonUI_to_RadarSpecifications(radarobject['GeneralRadarSpec_Object'],specifications)
+        radarSpecifications.append(specifications)
+      RadarSpecifications.append(radarSpecifications)
+      
     ssp.RadarSpecifications = RadarSpecifications
 
 def modifyArrayinfowithFile(specifications):

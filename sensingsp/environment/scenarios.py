@@ -666,7 +666,7 @@ def ris_analysis_app_scenario2():
     ssp.utils.set_RayTracing_advanced_intense()
     ssp.utils.set_raytracing_bounce(4)
     ssp.utils.save_Blender()
-def predefine_movingcube_6843(interpolation_type='LINEAR'):
+def predefine_movingcube_6843(interpolation_type='LINEAR',addRadar=True):
     #     Blender provides several interpolation types, and as of recent versions, there are 6 main interpolation options:
 
     # CONSTANT ('CONSTANT')
@@ -696,22 +696,34 @@ def predefine_movingcube_6843(interpolation_type='LINEAR'):
     for fcurve in cube.animation_data.action.fcurves:
         for keyframe in fcurve.keyframe_points:
             keyframe.interpolation = interpolation_type
-    ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
-    
-    
-    radar = ssp.radar.utils.predefined_array_configs_TI_IWR6843(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
-    # radar = ssp.radar.utils.predefined_array_configs_TI_IWR6843_az(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
-    # radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9,LinearArray_TXPos=[0],LinearArray_RXPos=[i*3e8/70e9/2 for i in range(30)])
-    
-    
-    radar['CFAR_RD_training_cells']=20
-    radar['CFAR_RD_guard_cells']=10
-    radar['CFAR_RD_alpha']=5.0
-    radar['CFAR_Angle_training_cells']=10
-    radar['CFAR_Angle_guard_cells']=0
-    radar['CFAR_Angle_alpha']=2.0
-    # radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=0
-    
+    if addRadar:
+        ssp.integratedSensorSuite.define_suite(0, location=Vector((0, 0, 0)), rotation=Vector((0, 0, 0)))
+        
+        
+        radar = ssp.radar.utils.predefined_array_configs_TI_IWR6843(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+        # radar = ssp.radar.utils.predefined_array_configs_TI_IWR6843_az(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9)
+        # radar = ssp.radar.utils.predefined_array_configs_LinearArray(isuite=0, iradar=0, location=Vector((0, 0,0)), rotation=Vector((np.pi/2,0, -np.pi/2)), f0=70e9,LinearArray_TXPos=[0],LinearArray_RXPos=[i*3e8/70e9/2 for i in range(30)])
+        radar["distance scaling"] = "1,1"
+        radar["VA order (TX,RX)->[X,Y]|"] = "(1,1)->[1,1] | (1,2)->[2,1] | (1,3)->[3,1] | (1,4)->[4,1] | (2,1)->[5,1] | (2,2)->[6,1] | (2,3)->[7,1] | (2,4)->[8,1] | (3,1)->[9,1] | (3,2)->[10,1] | (3,3)->[11,1] | (3,4)->[12,1] | "
+        radar["VA order2 (TX,RX)->[X,Y]|"] = ""
+        radar["MIMO_Tech"] = "TDM"
+        radar["MIMO_W"] = "(1+0j),0j,0j;0j,(1+0j),0j;0j,0j,(1+0j)"
+        
+
+        radar['AzFFT_OverNextP2'] = 2
+        radar['CFAR_RD_training_cells']="10,10"
+        radar['CFAR_RD_guard_cells']="10,10"
+        radar['CFAR_RD_alpha']=2
+        radar['CFAR_Angle_training_cells']="10,10"
+        radar['CFAR_Angle_guard_cells']="10,10"
+        radar['CFAR_Angle_alpha']=2.0
+            
+        radar['AngleSpectrum']="Capon" # "FFT","Capon","Max (Old)"
+        radar['Capon Azimuth min:res:max:fine_res (deg)']="-60:3:60:1"
+        radar['Capon Elevation min:res:max:fine_res (deg)']="-60:3:60:1"
+        # radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=0
+        
+        
     ssp.utils.set_frame_start_end(start=1,end=2)
     ssp.utils.useCUDA()
     # print(f"rangeResolution maxUnambigiousRange = {ssp.radar.utils.rangeResolution_and_maxUnambigiousRange(radar)}")
@@ -822,7 +834,6 @@ def predefine_TruckHuman_DiffRG():
     ssp.config.Radar_TX_RX_isolation = True
     ssp.utils.save_Blender()
 
-
 def processing_1():
     ssp.utils.trimUserInputs() 
     ssp.config.restart()
@@ -833,7 +844,6 @@ def processing_1():
     while ssp.config.run():
         path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
         alld = []
-        m = path_d_drate_amp[0][0][0][0][0][0][0][3]
         for itx in range(len(path_d_drate_amp[0][0][0][0][0])):
             for irx in range(len(path_d_drate_amp[0][0])):
                 for d_drate_amp in path_d_drate_amp[0][0][irx][0][0][itx]:
@@ -856,6 +866,8 @@ def processing_1():
         ssp.utils.increaseCurrentFrame()
     # plt.ioff() 
     plt.show()
+
+
     
 def processing_4():
     ssp.utils.trimUserInputs() 

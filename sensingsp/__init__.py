@@ -1,7 +1,7 @@
 """_summary_
 sensingsp 
 """
-__version__ = "1.5.9"
+__version__ = "1.5.10"
 from .constants import *
 from . import integratedSensorSuite
 from . import utils

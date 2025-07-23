@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen,QTransform
 from PyQt5.QtWidgets import (
-    QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,
+    QPushButton, QTableWidget, QTableWidgetItem, QGraphicsView,QTabWidget,QStackedWidget,
     QGraphicsScene, QGraphicsRectItem, QSizePolicy,QGraphicsLineItem
 )
 from PyQt5.QtCore import QRectF
@@ -22,18 +22,39 @@ import os
 import sensingsp as ssp
 import bpy
 from mathutils import Vector
+from mathutils import Quaternion
 # import numpy as np
 # from PyQt5.QtWidgets import (
 #     QMainWindow, QApplication, QWidget, QVBoxLayout,
 #     QPushButton, QFileDialog, QLabel, QHBoxLayout
 # )
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib
-try:
+in_colab = 'google.colab' in sys.modules
+
+# 2) Detect if we’re on an HPC batch job (common env‑vars: SLURM, PBS, LSF)
+hpc_vars = ('SLURM_JOB_ID', 'PBS_JOBID', 'LSB_JOBID')
+in_hpc = any(var in os.environ for var in hpc_vars)
+
+# 3) Detect local GUI‑capable session:
+#    - On Windows or macOS we assume a GUI is available.
+#    - On Linux, require a DISPLAY to be set.
+import platform
+system = platform.system()  # 'Windows', 'Darwin' (macOS) or 'Linux'
+if system in ('Windows', 'Darwin'):
+    local_gui = True
+elif system == 'Linux':
+    local_gui = bool(os.environ.get('DISPLAY'))
+else:
+    local_gui = False
+
+# 4) Finally: only switch backend on a local GUI session,
+#    and never on HPC or Colab.
+if local_gui and not in_hpc and not in_colab:
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    import matplotlib
     matplotlib.use('Qt5Agg')
-except Exception:
-    pass
+
+
 # Use Qt5 backend for Matplotlib
 # from mpl_toolkits.mplot3d import Axes3D
 # import sys
@@ -87,6 +108,13 @@ except Exception:
 #         # Move to the next frame
 #         self.current_frame += 1
 
+def process_events():
+    QApplication.processEvents()
+    bpy.context.view_layer.update()
+    for area in bpy.context.screen.areas:
+        area.tag_redraw()
+def guess_memory_usage(rays):
+    return sys.getsizeof(rays)
 
 def pyqtgraph3DApp(input_x):
     """Visualize 3D data frame by frame using Matplotlib."""
@@ -364,6 +392,7 @@ class RadarVisApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Radar Visualization")
         self.setGeometry(100, 100, 800, 600)
+        # ssp.environment.scenarios.predefine_movingcube_6843()
         self.initUI()
 
     def initUI(self):
@@ -373,8 +402,8 @@ class RadarVisApp(QMainWindow):
         vbox = QVBoxLayout(main_widget)
         # Controls layout: Run button, Next button, ComboBox
         controls_layout = QHBoxLayout()
-        self.run_button = QPushButton("Load")
-        self.next_button = QPushButton("Next")
+        self.run_button = QPushButton("Initialize")
+        self.next_button = QPushButton("Analysis Next Frame")
         self.combo = QComboBox()
         # Add processing options here
         self.combo.addItems(["RD-Det-Ang-Det", "VitalSign"])
@@ -470,29 +499,7 @@ class RadarVisApp(QMainWindow):
 
         
     def on_run(self):
-        fn = os.path.join(ssp.config.temp_folder, "arrayFolder","radar_array.mat")
-        ssp.environment.scenarios.predefine_Altos_Radar_file(fn)
-        # ssp.environment.scenarios.predefine_movingcube_6843()
-        # ssp.utils.initialize_environment()
-        # radar = ssp.radar.utils.addRadar(
-        #     radarSensor=ssp.radar.utils.RadarSensorsCategory.TI_IWR6843,
-        #     location_xyz=(0, -2, 0)
-        # )
-        # radar.rotation_euler.z=0
-        # radar['NPulse'] = 1
-        # radar['PRI_us'] = 50000
-        # radar['RF_AnalogNoiseFilter_Bandwidth_MHz']=.1
-        # respiration_cycles = 5
-        # respiration_rpm = 12 # 12 - 20
-        # respiration_time = 60.0/respiration_rpm
-        # respiration_period = int( respiration_time * bpy.context.scene.render.fps /2)
-        # ssp.environment.generate_chest_vibration_target(respiration_angle_amplitude=20,
-        #                             bone_lengths=(0.07, 0.035, 0.035),
-        #                             chest_dimensions=(0.175, 0.14, 1),
-        #                             subdivisions=10,
-        #                             respiration_cycles=respiration_cycles,
-        #                             respiration_period=respiration_period)
-        # ssp.utils.save_Blender()
+        ssp.config.restart()
         ssp.utils.trimUserInputs()
         self.combo2.clear()
         for isuite,suiteobject in enumerate(ssp.suite_information):
@@ -604,8 +611,31 @@ class RadarVisApp(QMainWindow):
             self.canvas.draw()
             self.canvas.flush_events()
             ssp.utils.increaseCurrentFrame()
-       
+    def temp(self):
+        X_fft_fast, d_fft = ssp.radar.utils.rangeprocessing(XRadar, specifications)
+        rangeDopplerTXRX, f_Doppler = ssp.radar.utils.dopplerprocessing_mimodemodulation(X_fft_fast, specifications)
+        detections, cfar_threshold, rangeDoppler4CFAR = ssp.radar.utils.rangedoppler_detection_alpha(rangeDopplerTXRX, specifications)
+        detected_points = np.where(detections == 1)
+        Azimuth_Angles,debug_spectrums = ssp.radar.utils.angleprocessing_capon1D(rangeDopplerTXRX, detections, specifications)
+        pc = ssp.radar.utils.pointscloud(d_fft[detected_points[0]], f_Doppler[detected_points[1]], Azimuth_Angles)
+    
     def on_next(self):
+        ssp.utils.research.simplest.ui_frame_processing(self)
+        return
+        for a in self.axes:
+            a.cla()
+        isuite = int(self.combo2.currentText().split(',')[0])
+        iradar = int(self.combo2.currentText().split(',')[1])
+        
+        specifications = ssp.RadarSpecifications[isuite][iradar]
+        
+        # suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        # radobj = suite_information[isuite]['Radar'][iradar]['GeneralRadarSpec_Object'] 
+        
+        
+        
+           
+    def on_next_old2(self):
         ssp.utils.trimUserInputs()
         for a in self.axes:
             a.cla()
@@ -619,9 +649,106 @@ class RadarVisApp(QMainWindow):
         isuite = int(self.combo2.currentText().split(',')[0])
         iradar = int(self.combo2.currentText().split(',')[1])
         specifications = ssp.RadarSpecifications[isuite][iradar]
-        
+        self.statusBar().showMessage("raytracing ...");QApplication.processEvents()
         path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        self.statusBar().showMessage("SensorsSignalGeneration ...");QApplication.processEvents()
+        Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+        pointcloud_axe_parent = self.pointcloud_axe()
+        if len(Signals[isuite]['radars'][iradar])==0:
+            return
+        XRadar,t = Signals[isuite]['radars'][iradar][0]
         
+        FMCW_ChirpSlobe = specifications['FMCW_ChirpSlobe']
+        Ts = specifications['Ts']
+        PRI = specifications['PRI']
+        PrecodingMatrix = specifications['PrecodingMatrix']
+        RadarMode = specifications['RadarMode']
+        
+        self.axes[1].plot(np.real(XRadar[:, 0, 0]), label="Real Part")
+        self.axes[1].plot(np.imag(XRadar[:, 0, 0]), label="Imaginary Part")
+        self.axes[1].set_xlabel("ADC Samples")
+        self.axes[1].set_ylabel("ADC Output Level")
+        self.axes[1].legend(loc='upper right')
+        self.axes[0].imshow(np.abs(XRadar[:, :, 0]),extent=[1*PRI, XRadar.shape[1]*PRI, 1, XRadar.shape[0]],
+                            aspect='auto', origin='lower')
+        self.axes[0].set_xlabel("Slow time")
+        self.axes[0].set_ylabel("ADC Samples")
+        
+        self.statusBar().showMessage("Range Doppler Processing ...");QApplication.processEvents()
+        
+        X_fft_fast, d_fft = ssp.radar.utils.rangeprocessing(XRadar, specifications)
+        
+        self.axes[3].plot(d_fft, np.abs(X_fft_fast[:, 0, 0]))
+        self.axes[3].set_xlabel("Range (m)")
+        self.axes[3].set_ylabel("Range Profile")
+        self.axes[2].imshow(np.abs(X_fft_fast[:, :, 0]),
+                            extent=[1*PRI, XRadar.shape[1]*PRI, d_fft[0], d_fft[-1]],
+                            aspect='auto', origin='lower')
+        self.axes[2].set_xlabel("Slow time")
+        self.axes[2].set_ylabel("Range")
+        
+        M_TX=PrecodingMatrix.shape[1]#specifications['M_TX']
+        L = X_fft_fast.shape[1]
+        Leff = int(L/M_TX)
+        if Leff == 0:
+            self.canvas.draw()
+            self.canvas.flush_events()
+            return
+        
+        rangeDopplerTXRX, f_Doppler = ssp.radar.utils.dopplerprocessing_mimodemodulation(X_fft_fast, specifications)
+        
+        
+        im = self.axes[4].imshow(np.abs(rangeDopplerTXRX[:, :, 0, 0]),
+                                extent=[f_Doppler[0], f_Doppler[-1], d_fft[0], d_fft[-1]],
+                                aspect='auto', origin='lower')
+        self.axes[4].set_xlabel("Doppler Frequency (Hz)")
+        self.axes[4].set_ylabel("Range (m)")
+        
+        # rangeTXRX = np.zeros((rangeDopplerTXRX.shape[0],rangeDopplerTXRX.shape[2],rangeDopplerTXRX.shape[3]),dtype=rangeDopplerTXRX.dtype)
+        
+        detections, cfar_threshold, rangeDoppler4CFAR = ssp.radar.utils.rangedoppler_detection_alpha(rangeDopplerTXRX, specifications,self.doCFARCB.isChecked())
+        
+        # rangeDoppler4CFAR -= np.min(rangeDoppler4CFAR)
+        
+        distance = np.linspace(d_fft[0], d_fft[-1], rangeDoppler4CFAR.shape[0])  # Replace with real distance data
+        elevation = np.linspace(f_Doppler[0],f_Doppler[-1], rangeDoppler4CFAR.shape[1])  # Replace with real angle data
+        X, Y = np.meshgrid(elevation, distance)
+        # FigsAxes[1,2].plot_surface(X, Y, 10*np.log10(rangeDoppler4CFAR), cmap='viridis', alpha=1)
+        self.axes[5].plot_surface(X, Y, (rangeDoppler4CFAR), cmap='viridis', alpha=1)
+        self.axes[5].set_xlabel('Doppler (Hz)')
+        self.axes[5].set_ylabel('Distance (m)')
+        self.axes[5].set_zlabel('Magnitude (normalized, dB)')
+        detected_points = np.where(detections == 1)
+        self.axes[5].scatter(elevation[detected_points[1]], distance[detected_points[0]], 
+                    (rangeDoppler4CFAR[detected_points]), color='red', s=20, label='Post-CFAR Point Cloud')
+        
+        points = ssp.radar.utils.xyz_angleprocessing(rangeDopplerTXRX, detections, specifications)
+        
+        
+        # detected_points = np.where(detections == 1)
+        # Azimuth_Angles,debug_spectrums = ssp.radar.utils.angleprocessing_capon1D(rangeDopplerTXRX, detections, specifications)
+        # pc = ssp.radar.utils.pointscloud(d_fft[detected_points[0]], f_Doppler[detected_points[1]], Azimuth_Angles)
+            
+        ssp.utils.increaseCurrentFrame()
+        
+        self.statusBar().showMessage("Done")
+    def on_next_old(self):
+        ssp.utils.trimUserInputs()
+        for a in self.axes:
+            a.cla()
+        if self.combo.currentText()==["RD-Det-Ang-Det", "VitalSign"][1]:
+            self.vs_processing()
+            return
+        ssp.utils.trimUserInputs() 
+        if self.combo2.count()==0:
+            return
+        
+        isuite = int(self.combo2.currentText().split(',')[0])
+        iradar = int(self.combo2.currentText().split(',')[1])
+        specifications = ssp.RadarSpecifications[isuite][iradar]
+        self.statusBar().showMessage("raytracing ...");QApplication.processEvents()
+        path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+        self.statusBar().showMessage("SensorsSignalGeneration ...");QApplication.processEvents()
         Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
         pointcloud_axe_parent = self.pointcloud_axe()
         
@@ -635,17 +762,6 @@ class RadarVisApp(QMainWindow):
         PrecodingMatrix = specifications['PrecodingMatrix']
         RadarMode = specifications['RadarMode']
         
-        # specifications['CFAR_RD_guard_cells'] = radarobject['GeneralRadarSpec_Object']['CFAR_RD_guard_cells']
-        # specifications['CFAR_RD_training_cells'] = radarobject['GeneralRadarSpec_Object']['CFAR_RD_training_cells']
-        # specifications['CFAR_RD_false_alarm_rate'] = radarobject['GeneralRadarSpec_Object']['CFAR_RD_false_alarm_rate']
-        # specifications['STC_Enabled'] = radarobject['GeneralRadarSpec_Object']['STC_Enabled']
-        # specifications['MTI_Enabled'] = radarobject['GeneralRadarSpec_Object']['MTI_Enabled']
-        # specifications['CFAR_Angle_guard_cells'] = radarobject['GeneralRadarSpec_Object']['CFAR_Angle_guard_cells']
-        # specifications['CFAR_Angle_training_cells'] = radarobject['GeneralRadarSpec_Object']['CFAR_Angle_training_cells']
-        # specifications['CFAR_Angle_false_alarm_rate'] = radarobject['GeneralRadarSpec_Object']['CFAR_Angle_false_alarm_rate']
-        # specifications['CFAR_RD_alpha'] = radarobject['GeneralRadarSpec_Object']['CFAR_RD_alpha']
-        # specifications['CFAR_Angle_alpha'] = radarobject['GeneralRadarSpec_Object']['CFAR_Angle_alpha']
-        
         self.axes[1].plot(np.real(XRadar[:, 0, 0]), label="Real Part")
         self.axes[1].plot(np.imag(XRadar[:, 0, 0]), label="Imaginary Part")
         self.axes[1].set_xlabel("ADC Samples")
@@ -655,6 +771,8 @@ class RadarVisApp(QMainWindow):
                             aspect='auto', origin='lower')
         self.axes[0].set_xlabel("Slow time")
         self.axes[0].set_ylabel("ADC Samples")
+        
+        self.statusBar().showMessage("Range Doppler Processing ...");QApplication.processEvents()
         
         fast_time_window = scipy.signal.windows.hamming(XRadar.shape[0])
         X_windowed_fast = XRadar * fast_time_window[:, np.newaxis, np.newaxis]
@@ -726,7 +844,7 @@ class RadarVisApp(QMainWindow):
             self.canvas.flush_events()
             ssp.utils.increaseCurrentFrame()
             return
-            
+        self.statusBar().showMessage("Range Doppler CFAR ...");QApplication.processEvents()
         # rangeDoppler4CFAR = np.abs(np.mean(rangeDopplerTXRX,axis=(2,3)))
         # rangeDoppler4CFAR = np.abs(rangeDopplerTXRX[:,:,0,0])
         test1_2,test2_2 = np.min(np.abs(rangeDoppler4CFAR)),np.max(np.abs(rangeDoppler4CFAR))
@@ -783,6 +901,7 @@ class RadarVisApp(QMainWindow):
             AzELscale = [1,1]
             dy = .5*Lambda*AzELscale[0]
             dz = .5*Lambda*AzELscale[1]
+            specifications['vaprocessing'] = "Az FFT"
         elif specifications['vaprocessing']=="Az FFT":
             rangeVA = np.zeros((int(np.max(specifications['vaorder'][:,2])),int(np.max(specifications['vaorder'][:,3]))),dtype=rangeDopplerTXRX.dtype)
             Lambda = 1.0
@@ -791,6 +910,14 @@ class RadarVisApp(QMainWindow):
             dz = .5*Lambda*AzELscale[1]
         
         elif specifications['vaprocessing']=="Az FFT,El Estimation":
+            rangeVA = np.zeros((int(np.max(specifications['vaorder'][:,2])),int(np.max(specifications['vaorder'][:,3]))),dtype=rangeDopplerTXRX.dtype)
+            rangeVA_2 = np.zeros((int(np.max(specifications['vaorder2'][:,2])),int(np.max(specifications['vaorder2'][:,3]))),dtype=rangeDopplerTXRX.dtype)
+            Lambda = 1.0
+            AzELscale = specifications['AzELscale']
+            dy = .5*Lambda*AzELscale[0]
+            dz = .5*Lambda*AzELscale[1]
+        
+            
             return
         elif specifications['vaprocessing']=="Az FFT,El FFT":
             return
@@ -807,6 +934,7 @@ class RadarVisApp(QMainWindow):
         
         maxAmp = 0
         for id in range(NDetection):
+            self.statusBar().showMessage(f"Angle Processing {id} from {NDetection} ...");QApplication.processEvents()
             rangeTarget = d_fft[detected_points[0][id]]
             dopplerTarget = f_Doppler[detected_points[1][id]]
             
@@ -817,7 +945,10 @@ class RadarVisApp(QMainWindow):
                 rangeVA[int(indx[2]-1), int(indx[3]-1)] = antennaSignal[int(indx[0]-1), int(indx[1]-1)]
             # rangeVA = np.zeros((np.max(i_list)+1,np.max(j_list)+1),dtype=antennaSignal.dtype)
             # rangeVA[i_list, j_list] = antennaSignal.ravel()
-            
+            if specifications['vaprocessing']=="Az FFT,El Estimation":
+                for indx in specifications['vaorder2']:
+                    rangeVA_2[int(indx[2]-1), int(indx[3]-1)] = antennaSignal[int(indx[0]-1), int(indx[1]-1)]
+                
             NFFT_Angle_OverNextPow2 = specifications['AzFFT_OverNextP2']
             NFFT_Angle = int(2 ** (np.ceil(np.log2(rangeVA.shape[0]))+NFFT_Angle_OverNextPow2))
             NFFT_Angle_OverNextPow_elevation = specifications['ElFFT_OverNextP2']
@@ -958,7 +1089,10 @@ class RadarVisApp(QMainWindow):
                         })
             
         ssp.utils.increaseCurrentFrame()
-
+        
+        self.statusBar().showMessage("Done")
+    
+    
 class HubLoadApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1162,16 +1296,19 @@ class RadarArrayApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Radar Array Configuration")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1100, 600)
+        # ssp.environment.scenarios.predefine_movingcube_6843()
         self.initUI()
 
     def initUI(self):
         # Main container
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        self.vbox = QVBoxLayout(main_widget)
-
+        self.vbox_main = QVBoxLayout(main_widget)
+        wid1 = QWidget()
+        self.vbox = QVBoxLayout(wid1)
         # JSON file path with browse button
+        
         h_json = QHBoxLayout()
         h_json.addWidget(QLabel("Radar Array File:"))
         self.linedit = QLineEdit()
@@ -1185,18 +1322,33 @@ class RadarArrayApp(QMainWindow):
         self.browse_button = QPushButton("Browse...")
         self.browse_button.clicked.connect(self.browse_file)
         h_json.addWidget(self.browse_button)
-        self.vbox.addLayout(h_json)
+        # self.vbox.addLayout(h_json)
 
+        h_config = QHBoxLayout()
+        h_config.addWidget(QLabel("Array initialization:"))
+        self.comboarrayinititype = QComboBox()
+        self.comboarrayinititype.addItems(["This UI", "Blender with this System Configurations", "Blender TDM"])
+        h_config.addWidget(self.comboarrayinititype)
+        # self.vbox.addLayout(h_config)
+        
+        # Default configurations
+        h_config = QHBoxLayout()
+        h_config.addWidget(QLabel("Default Array Configurations:"))
+        self.config_combo = QComboBox()
+        self.config_combo.addItems(ssp.utils.QtUI_arrays())
+        self.config_combo.currentIndexChanged.connect(self.on_config_changed)
+        h_config.addWidget(self.config_combo)
+        # self.vbox.addLayout(h_config)
         # Scale selector
-        h_scale = QHBoxLayout()
+        h_scale = h_config#QHBoxLayout()
         h_scale.addWidget(QLabel("Position Scale:"))
         self.scale_combo = QComboBox()
         self.scale_combo.addItems(["half wavelength", "m", "mm"])
         h_scale.addWidget(self.scale_combo)
-        h_scale.addWidget(QLabel("Frequency (GHz):"))
-        self.f0_lineedit = QLineEdit()
-        self.f0_lineedit.setText("77")
-        h_scale.addWidget(self.f0_lineedit)
+        # h_scale.addWidget(QLabel("Frequency (GHz):"))
+        # self.f0_lineedit = QLineEdit()
+        # self.f0_lineedit.setText("77")
+        # h_scale.addWidget(self.f0_lineedit)
         self.vbox.addLayout(h_scale)
 
         # TX array position
@@ -1220,30 +1372,43 @@ class RadarArrayApp(QMainWindow):
         self.rxb_lineedit = QLineEdit()
         self.rxb_lineedit.setText("10.5,10.5")
         h_rxb.addWidget(self.rxb_lineedit)
-        self.vbox.addLayout(h_rxb)
+        # self.vbox.addLayout(h_rxb)
 
-        # Default configurations
-        h_config = QHBoxLayout()
-        h_config.addWidget(QLabel("Default Array Configurations:"))
-        self.config_combo = QComboBox()
-        self.config_combo.addItems(["2x4","2x4-2", "3x4", "3x4-2", "3x4-3", "12x16", "12x16-2"])
-        self.config_combo.currentIndexChanged.connect(self.on_config_changed)
-        h_config.addWidget(self.config_combo)
-        self.vbox.addLayout(h_config)
+        h_va = h_rxb#QHBoxLayout()
+        h_va.addWidget(QLabel("X,Y distance scaling factor (sx,sy)"))
+        self.disscale_lineedit = QLineEdit("1,1")
+        h_va.addWidget(self.disscale_lineedit)
+        self.vbox.addLayout(h_va)
         
         # Default configurations
 
-        h_config2 = QHBoxLayout()
-        h_config2.addWidget(QLabel("Virtual Array Processing"))
-        self.va_combo = QComboBox()
-        self.va_combo.addItems(["Az FFT","Az FFT,El Estimation","Az FFT,El FFT", "2D FFT"])
-        self.va_combo.currentIndexChanged.connect(self.on_config_changed)
-        h_config2.addWidget(self.va_combo)
-        self.vaAuto_button = QPushButton("Auto")
-        self.vaAuto_button.clicked.connect(self.apply_vaAuto)
-        # h_config2.addWidget(self.vaAuto_button)
-        self.vbox.addLayout(h_config2)
+        # h_config2 = QHBoxLayout()
+        # h_config2.addWidget(QLabel("Virtual Array Processing"))
+        # self.va_combo = QComboBox()
+        # self.va_combo.addItems(["Az FFT","Az FFT,El Estimation","Az FFT,El FFT", "2D FFT"])
+        # self.va_combo.currentIndexChanged.connect(self.on_config_changed)
+        # h_config2.addWidget(self.va_combo)
+        # self.vaAuto_button = QPushButton("Auto")
+        # self.vaAuto_button.clicked.connect(self.apply_vaAuto)
+        # # h_config2.addWidget(self.vaAuto_button)
+        # self.vbox.addLayout(h_config2)
 
+        h_buttons = QHBoxLayout()
+        self.apply_button = QPushButton("Visualzie")
+        self.apply_button.clicked.connect(self.apply_settings)
+        h_buttons.addWidget(self.apply_button)
+
+        self.add_button = QPushButton("Add Radar")
+        self.add_button.clicked.connect(self.run_add)
+        h_buttons.addWidget(self.add_button)
+        self.vbox.addLayout(h_buttons)
+
+        # Matplotlib canvas for plotting
+        self.figure = Figure()
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.vbox.addWidget(self.canvas)
+        self.vbox.addWidget(QLabel("System Configurations:"))
 
         h_va = QHBoxLayout()
         h_va.addWidget(QLabel("VA order (TX,RX)->[X,Y]|"))
@@ -1283,17 +1448,9 @@ class RadarArrayApp(QMainWindow):
         s = s[:-1]
         self.mimo_lineedit.setText(s)
         
-        h_va = QHBoxLayout()
-        h_va.addWidget(QLabel("X,Y distance scaling factor (sx,sy)"))
-        self.disscale_lineedit = QLineEdit("1,1")
-        h_va.addWidget(self.disscale_lineedit)
-        self.vbox.addLayout(h_va)
         
         # Apply and additional buttons
         h_buttons = QHBoxLayout()
-        self.apply_button = QPushButton("Visualzie")
-        self.apply_button.clicked.connect(self.apply_settings)
-        h_buttons.addWidget(self.apply_button)
 
 
         self.download_button = QPushButton("Download predesigned from Hub")
@@ -1306,17 +1463,43 @@ class RadarArrayApp(QMainWindow):
 
         self.vbox.addLayout(h_buttons)
 
-        # Matplotlib canvas for plotting
-        self.figure = Figure()
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.vbox.addWidget(self.canvas)
 
         # Load/Save/Run buttons
         btn_layout = QHBoxLayout()
         self.load_button = QPushButton("Load Radar Array JSON")
         self.load_button.clicked.connect(self.load_data)
         # btn_layout.addWidget(self.load_button)
+        
+        self.cfarwid = QWidget()
+        self.vbox_cfar = QVBoxLayout(self.cfarwid)
+        
+        h_va = QHBoxLayout()
+        h_va.addWidget(QLabel("CFAR_RD_training_cells"))
+        self.CFAR_RD_training_cells = QLineEdit("40,40")
+        h_va.addWidget(self.CFAR_RD_training_cells)
+        h_va.addWidget(QLabel("CFAR_RD_guard_cells"))
+        self.CFAR_RD_guard_cells = QLineEdit("10,10")
+        h_va.addWidget(self.CFAR_RD_guard_cells)
+        h_va.addWidget(QLabel("CFAR_RD_alpha"))
+        self.CFAR_RD_alpha = QLineEdit("5.0")
+        h_va.addWidget(self.CFAR_RD_alpha)
+        self.vbox_cfar.addLayout(h_va)
+        h_va = QHBoxLayout()
+        h_va.addWidget(QLabel("CFAR_Angle_training_cells"))
+        self.CFAR_Angle_training_cells = QLineEdit("40,40")
+        h_va.addWidget(self.CFAR_Angle_training_cells)
+        h_va.addWidget(QLabel("CFAR_Angle_guaAngle_cells"))
+        self.CFAR_Angle_guard_cells = QLineEdit("10,10")
+        h_va.addWidget(self.CFAR_Angle_guard_cells)
+        h_va.addWidget(QLabel("CFAR_Angle_alpha"))
+        self.CFAR_Angle_alpha = QLineEdit("2.0")
+        h_va.addWidget(self.CFAR_Angle_alpha)
+        self.vbox_cfar.addLayout(h_va)
+        self.vbox_cfar.addStretch()
+        
+    
+
+
         btn_layout.addWidget(QLabel("Radar ID"))
         self.id_lineedit = QLineEdit()
         self.id_lineedit.setText("001")
@@ -1327,44 +1510,1112 @@ class RadarArrayApp(QMainWindow):
 
         self.run_button = QPushButton("Run Radar Array Analysis")
         self.run_button.clicked.connect(self.run_analysis)
-    
-        h_va = QHBoxLayout()
-        h_va.addWidget(QLabel("CFAR_RD_training_cells"))
-        self.CFAR_RD_training_cells = QLineEdit("20")
-        h_va.addWidget(self.CFAR_RD_training_cells)
-        h_va.addWidget(QLabel("CFAR_RD_guard_cells"))
-        self.CFAR_RD_guard_cells = QLineEdit("10")
-        h_va.addWidget(self.CFAR_RD_guard_cells)
-        h_va.addWidget(QLabel("CFAR_RD_alpha"))
-        self.CFAR_RD_alpha = QLineEdit("5.0")
-        h_va.addWidget(self.CFAR_RD_alpha)
-    # radar['CFAR_Angle_training_cells']=10
-    # radar['CFAR_Angle_guard_cells']=0
-    # radar['CFAR_Angle_alpha']=2.0
-        self.vbox.addLayout(h_va)
-        h_va = QHBoxLayout()
-        h_va.addWidget(QLabel("CFAR_Angle_training_cells"))
-        self.CFAR_Angle_training_cells = QLineEdit("10")
-        h_va.addWidget(self.CFAR_Angle_training_cells)
-        h_va.addWidget(QLabel("CFAR_Angle_guaAngle_cells"))
-        self.CFAR_Angle_guard_cells = QLineEdit("0")
-        h_va.addWidget(self.CFAR_Angle_guard_cells)
-        h_va.addWidget(QLabel("CFAR_Angle_alpha"))
-        self.CFAR_Angle_alpha = QLineEdit("2.0")
-        h_va.addWidget(self.CFAR_Angle_alpha)
-        self.vbox.addLayout(h_va)
 
         
-    
-
-
-        self.add_button = QPushButton("Add Radar")
-        self.add_button.clicked.connect(self.run_add)
-        btn_layout.addWidget(self.add_button)
-
-        self.vbox.addLayout(btn_layout)
+        
+        h_va = QHBoxLayout()
+        h_va.addWidget(QLabel("Select Radar Sensor"))
+        self.radarsensor_combo = QComboBox()
+        self.radarsensor_combo.addItems(["New","TI_AWR1642","TI_IWR6843","TI_AWR2243","TI_AWR2944","TI_Cascade_AWR2243","SISO_mmWave76GHz","Xhetru_X4","Altos"])
+        h_va.addWidget(self.radarsensor_combo)
+        self.radarsensor_combo.currentIndexChanged.connect(self.on_radarsensor_changed)
+        
+        # ssp.environment.scenarios.predefine_movingcube_6843()
+        
+        self.combo_radarsel = QComboBox()
+        h_va.addWidget(self.combo_radarsel)
+        self.updatesuiteradarspec()
+        self.readradarspec_button = QPushButton("Read Radar spec from Scenario")
+        self.readradarspec_button.clicked.connect(self.readradarspec)
+        h_va.addWidget(self.readradarspec_button)
+        self.writeradarspec_button = QPushButton("Write to Scenario")
+        self.writeradarspec_button.clicked.connect(self.writeradarspec)
+        h_va.addWidget(self.writeradarspec_button)
+        
+        
+        self.vbox_main.addLayout(h_va)
+        self.tab_widget = QTabWidget()
+        self._build_signal_tab()
+        self._build_transmit_receive_tab()
+        self.tab_widget.addTab(wid1, "Array Radar")
+        self._build_noise_adc_tab()
+        
+        self._build_radar_config_tab()
+        self._build_angleProcessing_tab()
+        self._build_simulations_tab()
+        self._build_run_tab()
+        self._build_runsim_tab()
+        self.tab_widget.setCurrentIndex(2)
+        self.vbox_main.addWidget(self.tab_widget)
+        # self.vbox_main.addLayout(btn_layout)
         # self.vbox.addStretch()
+    def on_radarsensor_changed(self,index):
+        # self.radarsensor_combo.addItems(["New","TI_AWR1642","TI_IWR6843","TI_AWR2243","TI_AWR2944","TI_Cascade_AWR2243","SISO_mmWave76GHz","Xhetru_X4","Altos"])
+        
+        if self.radarsensor_combo.currentText()=="New":
+            ""
+        elif self.radarsensor_combo.currentText()=="TI_AWR1642":
+            ssp.utils.set_TI_AWR1642_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="TI_IWR6843":
+            ssp.utils.set_TI_IWR6843_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="TI_AWR2243":
+            ssp.utils.set_TI_AWR2243_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="TI_AWR2944":
+            ssp.utils.set_TI_AWR2944_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="TI_Cascade_AWR2243":
+            ssp.utils.set_TI_Cascade_AWR2243_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="SISO_mmWave76GHz":
+            ssp.utils.set_SISO_mmWave76GHz_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="Xhetru_X4":
+            ssp.utils.set_Xhetru_X4_toQtUI(self)
+        elif self.radarsensor_combo.currentText()=="Altos":
+            ssp.utils.set_Altos_toQtUI(self)
+            
+        
+    def updatesuiteradarspec(self):
+        suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        self.combo_radarsel.clear()
+        for isuite,suiteobject in enumerate(suite_information):
+            for iradar,radarobject in enumerate(suiteobject['Radar']):
+                self.combo_radarsel.addItem(f'{isuite},{iradar}')
+        self.combo_radarsel.setCurrentIndex(self.combo_radarsel.count()-1)
+    def runnextframe(self):
+        self.new_window = RadarVisApp()
+        self.new_window.show()
+    def initsimulation(self):
+        ssp.utils.trimUserInputs() 
+        ssp.config.restart()
+    def vissimulation(self):
+        ssp.visualization.visualize_scenario()
+    def _build_runsim_tab(self):
+        pass
+        # w = QWidget()
+        # vbox = QVBoxLayout(w)
+        # init = QPushButton("Initialize Simulation")
+        # init.clicked.connect(self.initsimulation)
+        # next = QPushButton("Next Frame")
+        # next.clicked.connect(self.runnextframe)
+        # hbox = QHBoxLayout()
+        # hbox.addWidget(init)
+        # hbox.addWidget(next)
+        # vbox.addLayout(hbox)
+        # self.figure_vis = Figure(figsize=(12, 8), facecolor='#4e4e4e')  # dark background
+        # self.canvas_vis = FigureCanvas(self.figure_vis)
+        # vbox.addWidget(self.canvas_vis)
+        # self.axes_vis = []
+        # for i in range(8):
+        #     if i in [5, 6, 7]:
+        #         ax = self.figure_vis.add_subplot(2, 4, i + 1, projection='3d')
+        #         ax.set_facecolor('#6e6e6e')
+        #         ax.grid(True, linestyle='--', alpha=0.3)
+        #         ax.set_xlabel('X (m)')
+        #         ax.set_ylabel('Y (m)')
+        #         ax.set_zlabel('Z (m)')
+        #         ax.tick_params(colors='white')
+        #         ax.xaxis.label.set_color('white')
+        #         ax.yaxis.label.set_color('white')
+        #         ax.title.set_color('white')
+        #     else:
+        #         ax = self.figure_vis.add_subplot(2, 4, i + 1)
+        #         ax.set_facecolor('#6e6e6e')
+        #         ax.grid(True, linestyle='--', alpha=0.3)
+        #         ax.tick_params(colors='white')
+        #         ax.xaxis.label.set_color('white')
+        #         ax.yaxis.label.set_color('white')
+        #         ax.title.set_color('white')
+
+        #         # Optional: Set titles for each subplot
+        #         titles = [
+        #             "Raw ADC Data", "Real vs Imag", "Range-Time", "Range Profile",
+        #             "Range-Doppler", "", "", "Detected Points"
+        #         ]
+        #         if i < len(titles):
+        #             ax.set_title(titles[i], fontsize=10)
+
+        #     self.axes_vis.append(ax)
+
+        # self.figure_vis.tight_layout(pad=3.0)
+
+
+        # self.tab_widget.addTab(w, "Run")
+    def visualize_pattern(self):
+            # Get parameters from UI
+        pattern_type = self.tx_pattern.currentText()
+        max_gain = self.tx_gain.value()
+        az_bw = self.tx_az_bw.value()
+        el_bw = self.tx_el_bw.value()
+
+        # Define azimuth and elevation grid
+        az = np.linspace(-180, 180, 361)     # degrees
+        el = np.linspace(-90, 90, 181)     # degrees
+        AZ, EL = np.meshgrid(az, el)
+
+        # Antenna direction is identity (forward)
+        antenna_dir = Quaternion((1, 0, 0, 0))  # no rotation
+
+        # Allocate gain array
+        gain_map = np.zeros_like(AZ)
+
+        # Compute gain at each (az, el) point
+        for i in range(AZ.shape[0]):
+            for j in range(AZ.shape[1]):
+                az_rad = np.radians(AZ[i, j])
+                el_rad = np.radians(EL[i, j])
+
+                # Spherical to Cartesian unit vector
+                x = np.cos(el_rad) * np.cos(az_rad)
+                y = np.cos(el_rad) * np.sin(az_rad)
+                z = np.sin(el_rad)
+                dir_vec = Vector((x, y, z))
+
+                gain = ssp.raytracing.antenna_gain(
+                    pattern_type,
+                    antenna_dir,
+                    max_gain,
+                    az_bw,
+                    el_bw,
+                    pattern_type,
+                    dir_vec
+                )
+                gain_map[i, j] = gain
+
+        # Normalize and convert to Cartesian for 3D plotting
+        r = gain_map / np.max(gain_map)
+        AZ_rad = np.radians(AZ)
+        EL_rad = np.radians(EL)
+        X = r * np.cos(EL_rad) * np.cos(AZ_rad)
+        Y = r * np.cos(EL_rad) * np.sin(AZ_rad)
+        Z = r * np.sin(EL_rad)
+
+        # Plot
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        surf = ax.plot_surface(X, Y, Z,
+                            facecolors=plt.cm.viridis(gain_map / np.max(gain_map)),
+                            rstride=2, cstride=2, linewidth=0, antialiased=True, alpha=1.0)
+
+        ax.set_title(f"Antenna Gain Pattern: {pattern_type}", fontsize=14)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        plt.tight_layout()
+        ssp.utils.set_axes_equal(ax)
+        plt.show()
+        # pattern_type = self.tx_pattern.currentText()
+        # max_gain = self.tx_gain.value()
+        # az_bw = self.tx_az_bw.value()
+        # el_bw = self.tx_el_bw.value()
+
+        # # Create a grid of azimuth and elevation angles
+        # az = np.linspace(-90, 90, 181)
+        # el = np.linspace(-90, 90, 181)
+        # AZ, EL = np.meshgrid(az, el)
+
+        # # Assume fixed antenna orientation (looking forward) and convert angles to direction vectors
+        # gain_map = np.zeros_like(AZ)
+
+        # # Create identity rotation (forward-looking antenna)
+        # antenna_dir = Quaternion((1, 0, 0, 0))  # no rotation
+
+        # for i in range(AZ.shape[0]):
+        #     for j in range(AZ.shape[1]):
+        #         az_rad = np.radians(AZ[i, j])
+        #         el_rad = np.radians(EL[i, j])
+
+        #         # Convert (az, el) to unit vector
+        #         x = np.cos(el_rad) * np.cos(az_rad)
+        #         y = np.cos(el_rad) * np.sin(az_rad)
+        #         z = np.sin(el_rad)
+
+        #         dir_vec = Vector((x, y, z))
+
+        #         gain_map[i, j] = ssp.raytracing.antenna_gain(
+        #             pattern_type,
+        #             antenna_dir,
+        #             max_gain,
+        #             az_bw,
+        #             el_bw,
+        #             pattern_type,
+        #             dir_vec
+        #         )
+
+        # # Convert to dB for better visualization
+        # gain_dB = 10 * np.log10(np.clip(gain_map, 1e-6, None))
+
+        # # Plot as 2D heatmap
+        # plt.figure(figsize=(8, 6))
+        # plt.contourf(AZ, EL, gain_dB, levels=40, cmap='viridis')
+        # plt.colorbar(label='Gain (dB)')
+        # plt.xlabel("Azimuth (deg)")
+        # plt.ylabel("Elevation (deg)")
+        # plt.title(f"Antenna Pattern: {pattern_type}")
+        # plt.grid(True)
+        # plt.show()
+
+        
+    def _build_transmit_receive_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.tx_pattern = QComboBox()
+        self.tx_pattern.addItems(["Omni","Directional-Sinc","Rect","cos"])  # extend as needed
+        form.addRow("Tx Antenna Pattern", self.tx_pattern)
+
+        self.tx_gain = QDoubleSpinBox(); self.tx_gain.setRange(0, 50)
+        self.tx_gain.setValue(3.0)
+        form.addRow("Tx Element Gain (dB)", self.tx_gain)
+
+        self.tx_az_bw = QDoubleSpinBox(); self.tx_az_bw.setRange(0, 360)
+        self.tx_az_bw.setValue(120.0)
+        form.addRow("Tx Azimuth BW (°)", self.tx_az_bw)
+
+        self.tx_el_bw = QDoubleSpinBox(); self.tx_el_bw.setRange(0, 360)
+        self.tx_el_bw.setValue(120.0)
+        form.addRow("Tx Elevation BW (°)", self.tx_el_bw)
+        
+        visulaize_pattern = QPushButton("Visualize")
+        visulaize_pattern.clicked.connect(self.visualize_pattern)
+        # form.addRow("", visulaize_pattern)
+        # Receive
+        self.rx_pattern = QComboBox()
+        self.rx_pattern.addItems(["Omni","Directional-Sinc","Rect","cos"])
+        form.addRow("Rx Antenna Pattern", self.rx_pattern)
+
+        self.rx_gain = QDoubleSpinBox(); self.rx_gain.setRange(0, 50)
+        self.rx_gain.setValue(0.0)
+        form.addRow("Rx Element Gain (dB)", self.rx_gain)
+
+        self.rx_az_bw = QDoubleSpinBox(); self.rx_az_bw.setRange(0, 360)
+        self.rx_az_bw.setValue(120.0)
+        form.addRow("Rx Azimuth BW (°)", self.rx_az_bw)
+
+        self.rx_el_bw = QDoubleSpinBox(); self.rx_el_bw.setRange(0, 360)
+        self.rx_el_bw.setValue(120.0)
+        form.addRow("Rx Elevation BW (°)", self.rx_el_bw)
+
+        self.tab_widget.addTab(w, "Antenna Elements Patterns")
+        
+    def _on_radar_mode_change(self, text):
+        if text == "FMCW":
+            self.stack.setCurrentIndex(0)
+        elif text == "Pulse":
+            self.stack.setCurrentIndex(1)
+        elif text == "UWB":
+            self.stack.setCurrentIndex(2)
+        elif text == "CW":
+            self.stack.setCurrentIndex(3)
+    def _build_signal_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+
+        self.f0_lineedit = QDoubleSpinBox(); self.f0_lineedit.setRange(0, 1000)
+        self.f0_lineedit.setValue( 77.0 )
+        form.addRow("Start RF Frequency (GHz)", self.f0_lineedit)
+
+        
+        self.tx_power = QDoubleSpinBox();  self.tx_power.setRange(-100, +100)
+        self.tx_power.setValue(12.0)
+        form.addRow("Transmit Power (dBm)", self.tx_power)
+        # Radar mode combobox
+        self.radar_mode = QComboBox()
+        self.radar_mode.addItems(["FMCW","Pulse","UWB","CW"])
+        self.radar_mode.setCurrentText("FMCW")
+        self.pri = QDoubleSpinBox(); self.pri.setRange(0, 1e6)
+        self.pri.setValue(70.0)
+        form.addRow("PRI (µs)", self.pri)
+        form.addRow("Radar Mode", self.radar_mode)
+        self.stack = QStackedWidget()
+        self.radar_mode.currentTextChanged.connect(self._on_radar_mode_change)
+        # Slobe rate
+        fmcw_widget = QWidget()
+        
+        fmcw_layout = QFormLayout(fmcw_widget)
+        
+        self.slobe = QDoubleSpinBox(); self.slobe.setRange(0, 1e6)
+        self.slobe.setValue(1000.0/60.0)
+        fmcw_layout.addRow("FMCW Slope (MHz/µs)", self.slobe)
+        
+        fmcw_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        
+        
+        self.stack.addWidget(fmcw_widget)
+
+        pulse_widget = QWidget()
+        pulse_layout = QFormLayout(pulse_widget)
+        pulse_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        # Pulse waveform file
+        h = QHBoxLayout()
+        self.pulse_file = QLineEdit("WaveformFile.txt")
+        btn = QPushButton("Browse…")
+        btn.clicked.connect(lambda: self._pick_file(self.pulse_file))
+        h.addWidget(self.pulse_file); h.addWidget(btn)
+        pulse_layout.addRow("Pulse Waveform", h)
+        
+        self.stack.addWidget(pulse_widget)
+        
+        UWB_widget = QWidget()
+        UWB_layout = QFormLayout(UWB_widget)
+        self.stack.addWidget(UWB_widget)
+        
+        CW_widget = QWidget()
+        CW_layout = QFormLayout(CW_widget)
+        self.stack.addWidget(CW_widget)
+        
+        
+        form.addWidget(self.stack)
+        # form.addRow(QWidget())
+        self.fs = QDoubleSpinBox(); self.fs.setRange(0, 1e3)
+        self.fs.setValue(5.0)
+        fmcw_layout.addRow("ADC Sampling Rate (MSps)", self.fs)
+
+        self.n_adc = QSpinBox(); self.n_adc.setRange(1, 1024*8)
+        self.n_adc.setValue(256)
+        fmcw_layout.addRow("ADC Samples per Pulse", self.n_adc)
+        self.fmcw = QCheckBox("FMCW Mode")
+        self.fmcw.setChecked(True)
+        fmcw_layout.addRow(self.fmcw)
+        self.fmcwinfo = QLabel("...")
+        self.fmcwinfo_btn = QPushButton("Info")
+        self.fmcwinfo_btn.clicked.connect(self.fmcwinfo_fcn)
+        fmcw_layout.addRow(self.fmcwinfo_btn, self.fmcwinfo)
+        
+        
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        self.tab_widget.addTab(w, "TX Waveform")
+    
+    def _build_noise_adc_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.rf_filter_bw = QDoubleSpinBox(); self.rf_filter_bw.setRange(0, 1e3)
+        self.rf_filter_bw.setValue(10.0)
+        form.addRow("RF Filter BW (MHz)", self.rf_filter_bw)
+        
+        self.rf_nf = QDoubleSpinBox(); self.rf_nf.setRange(0, 20)
+        self.rf_nf.setValue(5.0)
+        form.addRow("RF Noise Figure (dB)", self.rf_nf)
+
+        self.temp_k = QDoubleSpinBox(); self.temp_k.setRange(0, 1000)
+        self.temp_k.setValue(290.0)
+        form.addRow("Temperature (K)", self.temp_k)
+
+        self.adc_pk2pk = QDoubleSpinBox(); self.adc_pk2pk.setRange(0, 10)
+        self.adc_pk2pk.setValue(2.0)
+        form.addRow("ADC Peak‐to‐Peak", self.adc_pk2pk)
+
+        self.adc_levels = QSpinBox(); self.adc_levels.setRange(2, 1<<16)
+        self.adc_levels.setValue(256)
+        form.addRow("ADC Levels", self.adc_levels)
+
+        self.adc_imp = QDoubleSpinBox(); self.adc_imp.setRange(0, 1e3)
+        self.adc_imp.setValue(300.0)
+        form.addRow("ADC Impedance Factor", self.adc_imp)
+
+        self.adc_lna = QDoubleSpinBox(); self.adc_lna.setRange(0, 100)
+        self.adc_lna.setValue(50.0)
+        form.addRow("ADC LNA Gain (dB)", self.adc_lna)
+
+
+        self.adc_sat = QCheckBox("Enable ADC Saturation")
+        form.addRow(self.adc_sat)
+
+        self.tab_widget.addTab(w, "RX Hardware")
+
+    def _build_angleProcessing_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        self.azimuth_window = QComboBox()
+        self.azimuth_window.addItems(["Rectangular", "Hamming", "Hann"])
+        self.azimuth_window.setCurrentText("Hamming")
+        form.addRow("Azimuth Window", self.azimuth_window)
+        self.azimuth_FFT_points = QSpinBox(); self.azimuth_FFT_points.setRange(-1, 4)
+        form.addRow("Azimuth FFT points (-1(same length), n next pow 2)", self.azimuth_FFT_points)
+        
+        
+        self.Elevation_window = QComboBox()
+        self.Elevation_window.addItems(["Rectangular", "Hamming", "Hann"])
+        self.Elevation_window.setCurrentText("Hamming")
+        form.addRow("Elevation Window", self.Elevation_window)
+        self.Elevation_FFT_points = QSpinBox(); self.Elevation_FFT_points.setRange(-1, 4)
+        form.addRow("Elevation FFT points (-1(same length), n next pow 2)", self.Elevation_FFT_points)
+        
+        self.spectrum_angle_type = QComboBox()
+        self.spectrum_angle_type.addItems(["FFT","Capon"])
+        form.addRow("Angle Spectrum", self.spectrum_angle_type)
+
+        self.CaponAzimuth = QLineEdit()
+        self.CaponAzimuth.setText("-60:3:60:1")
+        form.addRow("Capon Azimuth min:res:max:fine_res (deg)", self.CaponAzimuth)
+        self.CaponElevation = QLineEdit()
+        self.CaponElevation.setText("-60:3:60:1")
+        form.addRow("Capon Elevation min:res:max:fine_res (deg)", self.CaponElevation)
+        self.CaponDL = QLineEdit()
+        self.CaponDL.setText("2")
+        form.addRow("Capon Diagonal Loading Factor ( >10 -> MF)", self.CaponDL)
+        
+
+        self.cfar_angle_type = QComboBox()
+        self.cfar_angle_type.addItems(["Fixed Threshold a*KSort","CA CFAR", "OS CFAR", "Fixed Threshold", "Fixed Threshold a*mean","No CFAR (max)"])
+        form.addRow("CFAR Type: Angle (Azimuth-Elevation)", self.cfar_angle_type)
+        form.addRow("CFAR coef.: Angle (Azimuth-Elevation)", self.CFAR_Angle_alpha)
+        form.addRow("CFAR Training Cells (Az,El)%: Angle (Azimuth-Elevation)", self.CFAR_Angle_training_cells)
+        form.addRow("CFAR Guard Cells (OS index)(Az,El)%: Angle (Azimuth-Elevation)", self.CFAR_Angle_guard_cells)
+        self.tab_widget.addTab(w, "RX Processing-Angle")
+    def _build_radar_config_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        self.range_window = QComboBox()
+        self.range_window.addItems(["Rectangular", "Hamming", "Hann"])
+        # self.range_window.setCurrentText("Hamming")
+        form.addRow("Range Window", self.range_window)
+        self.Range_FFT_points = QSpinBox(); self.Range_FFT_points.setRange(-1, 4)
+        form.addRow("Range FFT points (-1(same length), n next pow 2)", self.Range_FFT_points)
+
+        self.Range_Start = QDoubleSpinBox(); self.Range_Start.setRange(0, 100)
+        self.Range_End = QDoubleSpinBox(); self.Range_End.setRange(0, 100)
+        self.Range_End.setValue(100.0)
+        self.range_limits = QHBoxLayout()
+        self.range_limits.addWidget(self.Range_Start)
+        self.range_limits.addWidget(self.Range_End)
+        form.addRow("Range Limits (%)", self.range_limits)
+
+        self.pulse_buffering = QCheckBox("Pulse Buffering")
+        form.addRow("Vital Sign Phase Processing", self.pulse_buffering)
+        
+        self.clutter_removal = QCheckBox("Enable Clutter Removal")
+        form.addRow("Clutter Removal", self.clutter_removal)
+        self.dopplerprocessing_method = QComboBox()
+        self.dopplerprocessing_method.addItems(["Simple FFT", "inv W", "Compensation"])
+        form.addRow("Doppler Processing Method", self.dopplerprocessing_method)
+        self.n_pulse = QSpinBox(); self.n_pulse.setRange(1, 1024*8)
+        self.n_pulse.setValue(3 * 64)
+        form.addRow("Number of Pulses in CPI", self.n_pulse)
+        self.n_pulse_mimo = QSpinBox(); self.n_pulse_mimo.setRange(1, 1024*8)
+        self.n_pulse_mimo.setValue(64)
+        self.n_pulse_mimo_btn = QPushButton("Set CPI to (x * TX Number) for MIMO")
+        self.n_pulse_mimo_btn.clicked.connect(self.n_pulse_mimo_btn_fcn)
+        form.addRow(self.n_pulse_mimo_btn, self.n_pulse_mimo)
+        
+        self.doppler_window = QComboBox()
+        self.doppler_window.addItems(["Rectangular", "Hamming", "Hann"])
+        self.doppler_window.setCurrentText("Hamming")
+        form.addRow("Doppler Window", self.doppler_window)
+        self.Doppler_FFT_points = QSpinBox(); self.Doppler_FFT_points.setRange(-1, 4)
+        form.addRow("Doppler FFT points (-1(same length), n next pow 2)", self.Doppler_FFT_points)
+        self.RangeDopplerCFARMean = QCheckBox("Range Doppler CFAR Antenna Mean")
+        form.addRow("Range Doppler CFAR Antenna Mean", self.RangeDopplerCFARMean)
+        
+        self.logscale = QCheckBox("Logarithmic Scale Amplitude")
+        self.logscale.setChecked(True)
+        form.addRow("Log Scale", self.logscale)
+        
+        self.cfar_rd_type = QComboBox()
+        self.cfar_rd_type.addItems(["Fixed Threshold a*KSort","CA CFAR", "OS CFAR", "Fixed Threshold", "Fixed Threshold a*mean","No CFAR (max)"])
+        form.addRow("CFAR Type: Range-Doppler", self.cfar_rd_type)
+        form.addRow("CFAR coef.: Range-Doppler", self.CFAR_RD_alpha)
+        form.addRow("CFAR Training Cells (R,D)%: Range-Doppler", self.CFAR_RD_training_cells)
+        form.addRow("CFAR Guard Cells (OS index)(R,D)%: Range-Doppler", self.CFAR_RD_guard_cells)
+        
+        
+        
+        
+        
+        # form.addRow("CFAR",self.cfarwid)
+        # # FFT zero‐pad flags
+        # self.rng_fft_pad = QCheckBox("Next‐Power‐2 Range FFT")
+        # form.addRow(self.rng_fft_pad)
+        # self.dop_fft_pad = QCheckBox("Next‐Power‐2 Doppler FFT")
+        # form.addRow(self.dop_fft_pad)
+        # self.az_fft_pad = QCheckBox("Next‐Power‐2 Azimuth FFT")
+        # form.addRow(self.az_fft_pad)
+        # self.el_fft_pad = QCheckBox("Next‐Power‐2 Elevation FFT")
+        # form.addRow(self.el_fft_pad)
+        self.tab_widget.addTab(w, "RX Processing")    
+
+
+    
+    def _build_simulations_tab(self):
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        # Misc
+        self.save_t = QCheckBox("Save Signal Generation Time")
+        self.save_t.setChecked(True)
+        form.addRow(self.save_t)
+
+        self.continuous_cpi = QCheckBox("Continuous CPI per Frame")
+        form.addRow(self.continuous_cpi)
+
+        self.starttime = QLineEdit("0.000000")
+        form.addRow("Start time", self.starttime)
+        self.currenttime = QLabel("0.000000")
+        form.addRow("Current time", self.currenttime)
+        self.currentpulse = QLabel("0")
+        form.addRow("Current pulse number", self.currentpulse)
+        
+        self.tab_widget.addTab(w, "Miscellaneous")        
+    def _build_run_tab(self):
+        ssp.utils.define_settings()
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+        # Misc
+        
+        self.animation_frame_rate = QLineEdit(str(bpy.context.scene.render.fps))
+        form.addRow("Animation Frame Rate", self.animation_frame_rate)
+        self.ray_tracing_mode = QComboBox()
+        self.ray_tracing_mode.addItems(["Light", "Balanced", "Advanced"])
+        form.addRow("Ray Tracing Mode", self.ray_tracing_mode)
+        self.ray_tracing_bounce_number = QLineEdit(str(bpy.data.objects["Simulation Settings"]["Bounce Number"]))
+        form.addRow("Ray Tracing Bounce Number", self.ray_tracing_bounce_number)
+        
+        self.cuda_check = QCheckBox("use CUDA")
+        self.cuda_check.setChecked(ssp.config.GPU_run_available())
+        if ssp.config.CUDA_is_available:
+            form.addRow("GPU & CUDA is available", self.cuda_check )
+            
+        else:
+            form.addRow("No GPU & CUDA", self.cuda_check )
+            self.cuda_check.setChecked(False)
+            self.cuda_check.setEnabled(False)
+            
+        self.spill_over_check = QCheckBox("Spill over enabled")
+        form.addRow("Spill over", self.spill_over_check )
+        
+        self.theme = QComboBox()
+        self.theme.addItems(["Theme 1", "Theme 2", "Theme 3", "Theme 4"])
+        form.addRow("UI Theme", self.theme)
+        
+        self.animation_endframe = QLineEdit(str(bpy.context.scene.frame_end))
+        form.addRow("Animation End Frame", self.animation_endframe)
+        
+        
+        self.set_button = QPushButton("Set")
+        self.set_button.clicked.connect(self.set_button_fcn)
+        self.processingUI_button = QPushButton("Processing UI")
+        self.processingUI_button.clicked.connect(self.processingUI_button_fcn)
+        # form.addRow(self.set_button,self.processingUI_button)
+        form.addRow("Set",self.set_button)
+        
+        # 
+        hb = QHBoxLayout()
+        self.range_input = QDoubleSpinBox()
+        self.range_input.setRange(0, 10000)
+        self.range_input.setValue(10.0)
+        hb.addWidget(QLabel("Range (m)"))
+        hb.addWidget(self.range_input)
+        # Radial Velocity
+        self.radial_velocity_input = QDoubleSpinBox()
+        self.radial_velocity_input.setRange(-1000, 1000)
+        self.radial_velocity_input.setValue(0.0)
+        hb.addWidget(QLabel("Radial Velocity (m/s)"))
+        hb.addWidget(self.radial_velocity_input)
+        form.addRow(hb)
+        # Azimuth
+        hb = QHBoxLayout()
+        self.azimuth_input = QDoubleSpinBox()
+        self.azimuth_input.setRange(-180, 180)
+        self.azimuth_input.setValue(0.0)
+        hb.addWidget(QLabel("Azimuth (deg)"))
+        hb.addWidget(self.azimuth_input)
+        
+        # form.addRow("Azimuth (deg)", self.azimuth_input)
+
+        # Elevation
+        self.elevation_input = QDoubleSpinBox()
+        self.elevation_input.setRange(-90, 90)
+        self.elevation_input.setValue(0.0)
+        hb.addWidget(QLabel("Elevation (deg)"))
+        hb.addWidget(self.elevation_input)
+        form.addRow(hb)
+        # RCS0
+        hb = QHBoxLayout()
+        self.rcs0_input = QDoubleSpinBox()
+        self.rcs0_input.setRange(0, 10000)
+        self.rcs0_input.setValue(1.0)
+        hb.addWidget(QLabel("RCS0 (m)"))
+        hb.addWidget(self.rcs0_input)
+        # Size
+        self.size_input = QDoubleSpinBox()
+        self.size_input.setRange(0.01, 100)
+        self.size_input.setValue(1.0)
+        hb.addWidget(QLabel("Size (m)"))
+        hb.addWidget(self.size_input)
+        form.addRow(hb)
+        
+        
+        # Shape
+        self.shape_input = QComboBox()
+        self.shape_input.addItems(["cube", "sphere", "plane"])
+        form.addRow("Shape", self.shape_input)
+        
+        self.addTarget_button = QPushButton("Add Target")
+        self.addTarget_button.clicked.connect(self.addTarget_button_fcn)
+        form.addRow(self.addTarget_button)
+        delall_button = QPushButton("Delete All")
+        delall_button.clicked.connect(self.delall_button_fcn)
+        form.addRow(delall_button)
+        
+        next = QPushButton("Signal Gen. & Process")
+        next.clicked.connect(self.runnextframe)
+        
+        init = QPushButton("Initialize Simulation")
+        init.clicked.connect(self.initsimulation)
+        form.addRow(init)
+        vis = QPushButton("Visualize Scenario")
+        vis.clicked.connect(self.vissimulation)
+        form.addRow(vis,next)
+
+        self.tab_widget.addTab(w, "Simulation")        
+    def delall_button_fcn(self):
+        ssp.utils.delete_all_objects()
+        ssp.utils.define_settings()
+        self.updatesuiteradarspec()
+
+    def set_button_fcn(self):
+        ssp.utils.useCUDA(self.cuda_check.isChecked())
+        
+        bpy.context.scene.render.fps = int(self.animation_frame_rate.text())
+        bpy.context.scene.frame_end = int(self.animation_endframe.text())
+        ssp.utils.set_raytracing_bounce(int(self.ray_tracing_bounce_number.text()))
+        ["Light", "Balanced", "Advanced"]
+        if self.ray_tracing_mode.currentText()=="Light":
+            ssp.utils.set_RayTracing_light()
+        elif self.ray_tracing_mode.currentText()=="Balanced":
+            ssp.utils.set_RayTracing_balanced()
+        elif self.ray_tracing_mode.currentText()=="Advanced":
+            ssp.utils.set_RayTracing_advanced_intense()
+        if self.theme.currentText()=="Theme 1":
+            ssp.config.appSTYLESHEET = ssp.config.appSTYLESHEET1
+        elif self.theme.currentText()=="Theme 2":
+            ssp.config.appSTYLESHEET = ssp.config.appSTYLESHEET2
+        elif self.theme.currentText()=="Theme 3":
+            ssp.config.appSTYLESHEET = ssp.config.appSTYLESHEET3
+        elif self.theme.currentText()=="Theme 4":
+            ssp.config.appSTYLESHEET = ssp.config.appSTYLESHEET4
+        self.setStyleSheet(ssp.config.appSTYLESHEET)
+        if self.spill_over_check.isChecked():
+            ssp.config.directReceivefromTX =  True
+        else:
+            ssp.config.directReceivefromTX =  False 
+            ssp.config.RadarRX_only_fromscatters_itsTX = True
+            ssp.config.RadarRX_only_fromitsTX = True
+            ssp.config.Radar_TX_RX_isolation = True
+    def processingUI_button_fcn(self):
+        ssp.utils.trimUserInputs() 
+        ssp.config.restart()
+        while ssp.config.run():
+            path_d_drate_amp = ssp.raytracing.Path_RayTracing_frame()
+            Signals = ssp.integratedSensorSuite.SensorsSignalGeneration_frame(path_d_drate_amp)
+            ssp.integratedSensorSuite.SensorsSignalProccessing_Chain_RangeProfile_RangeDoppler_AngleDoppler(Signals)
+            ssp.utils.increaseCurrentFrame()
+        
+    def addTarget_button_fcn(self):
+        range_m = self.range_input.value()
+        azimuth_deg = self.azimuth_input.value()
+        elevation_deg = self.elevation_input.value()
+        rcs0 = self.rcs0_input.value()
+        size_m = self.size_input.value()
+        radial_velocity = self.radial_velocity_input.value()
+        shape = self.shape_input.currentText()
+        s = self.combo_radarsel.currentText()
+        if s=="":
+            return
+        isuite,iradar = s.split(',')
+        isuite = int(isuite)
+        iradar = int(iradar)
+        # ssp.utils.trimUserInputs()
+        # radobj = ssp.RadarSpecifications[isuite][iradar]['BlenderObject']
+        
+        suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        radobj = suite_information[isuite]['Radar'][iradar]['GeneralRadarSpec_Object'] 
+        
+        ssp.radar.utils.addTarget(
+            refRadar=radobj,
+            range=range_m,
+            azimuth=azimuth_deg,
+            elevation=elevation_deg,
+            RCS0=rcs0,
+            size=size_m,
+            radial_velocity=radial_velocity,
+            shape=shape
+        )
+        ssp.radar.utils.apps.process_events()
+    def n_pulse_mimo_btn_fcn(self):
+        tx_positions = [tuple(map(float, p.split(','))) for p in self.tx_lineedit.text().split('|')]
+        n_tx = len(tx_positions)
+        self.n_pulse.setValue(n_tx * self.n_pulse_mimo.value())
+
+    def read_settings(self,settings):
+        ssp.utils.QtUI_to_BlenderAddonUI(self, settings)
+        return
+        settings["Center_Frequency_GHz"] = self.f0_lineedit.value()
+        settings["Transmit_Power_dBm"] = self.tx_power.value()
+        settings["PRI_us"] = self.pri.value()
+        settings["RadarMode"] = self.radar_mode.currentText()
+        settings["FMCW_ChirpSlobe_MHz_usec"] = self.slobe.value()
+        settings["Fs_MHz"] = self.fs.value()
+        settings["N_ADC"] = self.n_adc.value()
+        settings["FMCW"] = self.fmcw.isChecked()
+        settings["PulseWaveform"] = self.pulse_file.text()
+
+        # --- Array & MIMO ---
+        settings["ArrayInfofile"] = self.linedit.text()
+        settings["Array_initialization"] = self.comboarrayinititype.currentText()
+        settings["Default_Array_Config"] = self.config_combo.currentText()
+        settings["Position_Scale"] = self.scale_combo.currentText()
+        settings["TXPos_xy"] = self.tx_lineedit.text()
+        settings["RXPos_xy"] = self.rx_lineedit.text()
+        settings["RXPos_xy_bias"] = self.rxb_lineedit.text()
+        
+        settings["distance scaling"] = self.disscale_lineedit.text()
+        settings["VA order (TX,RX)->[X,Y]|"] = self.vaorder_lineedit.text()
+        settings["VA order2 (TX,RX)->[X,Y]|"] = self.vaorder_lineedit2.text()
+        settings["MIMO_Tech"] = self.mimo_combo.currentText()
+        settings["MIMO_W"] = self.mimo_lineedit.text()
+
+        # --- Antenna patterns ---
+        settings["Transmit_Antenna_Element_Pattern"] = self.tx_pattern.currentText()
+        settings["Transmit_Antenna_Element_Gain_db"] = self.tx_gain.value()
+        settings["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = self.tx_az_bw.value()
+        settings["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = self.tx_el_bw.value()
+        settings["Receive_Antenna_Element_Pattern"] = self.rx_pattern.currentText()
+        settings["Receive_Antenna_Element_Gain_db"] = self.rx_gain.value()
+        settings["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = self.rx_az_bw.value()
+        settings["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = self.rx_el_bw.value()
+
+        # --- Noise & ADC ---
+        settings["RF_AnalogNoiseFilter_Bandwidth_MHz"] = self.rf_filter_bw.value()
+        settings["RF_NoiseFiguredB"] = self.rf_nf.value()
+        settings["Tempreture_K"] = self.temp_k.value()
+        settings["ADC_peak2peak"] = self.adc_pk2pk.value()
+        settings["ADC_levels"] = self.adc_levels.value()
+        settings["ADC_ImpedanceFactor"] = self.adc_imp.value()
+        settings["ADC_LNA_Gain_dB"] = self.adc_lna.value()
+        settings["ADC_SaturationEnabled"] = self.adc_sat.isChecked()
+
+        # --- Range-Doppler processing ---
+        settings["RangeWindow"] = self.range_window.currentText()
+        settings["RangeFFT_OverNextP2"] = self.Range_FFT_points.value()
+        settings["Pulse_Buffering"] = self.pulse_buffering.isChecked()
+        settings["ClutterRemoval_Enabled"] = self.clutter_removal.isChecked()
+        settings["DopplerProcessingMIMODemod"] = self.dopplerprocessing_method.currentText()
+        settings["NPulse"] = self.n_pulse.value()
+        settings["DopplerWindow"] = self.doppler_window.currentText()
+        settings["DopplerFFT_OverNextP2"] = self.Doppler_FFT_points.value()
+        settings["RangeDopplerCFARLogScale"] = self.logscale.isChecked()
+        settings["CFAR_RD_type"] = self.cfar_rd_type.currentText()
+        settings["CFAR_RD_training_cells"] = self.CFAR_RD_training_cells.text()
+        settings["CFAR_RD_guard_cells"] = self.CFAR_RD_guard_cells.text()
+        settings["CFAR_RD_alpha"] = float(self.CFAR_RD_alpha.text())
+
+        # --- Angle processing ---
+        settings["AzimuthWindow"] = self.azimuth_window.currentText()
+        settings["AzFFT_OverNextP2"] = self.azimuth_FFT_points.value()
+        settings["ElevationWindow"] = self.Elevation_window.currentText()
+        settings["ElFFT_OverNextP2"] = self.Elevation_FFT_points.value()
+        settings["AngleSpectrum"] = self.spectrum_angle_type.currentText()
+        settings["Capon Azimuth min:res:max:fine_res (deg)"] = self.CaponAzimuth.text()
+        settings["Capon Elevation min:res:max:fine_res (deg)"] = self.CaponElevation.text()
+        settings["CFAR_Angle_type"] = self.cfar_angle_type.currentText()
+        settings["CFAR_Angle_training_cells"] = self.CFAR_Angle_training_cells.text()
+        settings["CFAR_Angle_guard_cells"] = self.CFAR_Angle_guard_cells.text()
+        settings["CFAR_Angle_alpha"] = float(self.CFAR_Angle_alpha.text())
+
+        # --- Simulation settings ---
+        settings["SaveSignalGenerationTime"] = self.save_t.isChecked()
+        settings["continuousCPIsTrue_oneCPIpeerFrameFalse"] = self.continuous_cpi.isChecked()
+        settings["t_start_radar"] = float(self.starttime.text())
+
+        
+            
+    def read_settings0(self,settings):
+        # --- Transmit / Receive ---
+        settings["Transmit_Power_dBm"] = self.tx_power.value()
+        settings["Transmit_Antenna_Element_Pattern"] = self.tx_pattern.currentText()
+        settings["Transmit_Antenna_Element_Gain_db"] = self.tx_gain.value()
+        settings["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"] = self.tx_az_bw.value()
+        settings["Transmit_Antenna_Element_Elevation_BeamWidth_deg"] = self.tx_el_bw.value()
+
+        settings["Receive_Antenna_Element_Pattern"] = self.rx_pattern.currentText()
+        settings["Receive_Antenna_Element_Gain_db"] = self.rx_gain.value()
+        settings["Receive_Antenna_Element_Azimuth_BeamWidth_deg"] = self.rx_az_bw.value()
+        settings["Receive_Antenna_Element_Elevation_BeamWidth_deg"] = self.rx_el_bw.value()
+
+        # --- Signal parameters ---
+        settings["Center_Frequency_GHz"] = self.center_freq.value()
+        settings["PRI_us"] = self.pri.value()
+        settings["Fs_MHz"] = self.fs.value()
+        settings["NPulse"] = self.n_pulse.value()
+        settings["N_ADC"] = self.n_adc.value()
+        settings["RangeWindow"] = self.range_window.currentText()
+        settings["DopplerWindow"] = self.doppler_window.currentText()
+
+        # --- Noise & ADC ---
+        settings["Tempreture_K"] = self.temp_k.value()
+        settings["ADC_peak2peak"] = self.adc_pk2pk.value()
+        settings["ADC_levels"] = self.adc_levels.value()
+        settings["ADC_ImpedanceFactor"] = self.adc_imp.value()
+        settings["ADC_LNA_Gain_dB"] = self.adc_lna.value()
+        settings["RF_NoiseFiguredB"] = self.rf_nf.value()
+        settings["RF_AnalogNoiseFilter_Bandwidth_MHz"] = self.rf_filter_bw.value()
+        settings["ADC_SaturationEnabled"] = self.adc_sat.isChecked()
+
+        # --- Radar config ---
+        settings["FMCW"] = self.fmcw.isChecked()
+        settings["FMCW_ChirpSlobe_MHz_usec"] = self.slobe.value()
+        settings["RangeFFT_OverNextP2"] = int(self.rng_fft_pad.isChecked())
+        settings["DopplerFFT_OverNextP2"] = int(self.dop_fft_pad.isChecked())
+        settings["AzFFT_OverNextP2"] = int(self.az_fft_pad.isChecked())
+        settings["ElFFT_OverNextP2"] = int(self.el_fft_pad.isChecked())
+        settings["RadarMode"] = self.radar_mode.currentText()
+        settings["PulseWaveform"] = self.pulse_file.text()
+        settings["SaveSignalGenerationTime"] = self.save_t.isChecked()
+        settings["continuousCPIsTrue_oneCPIpeerFrameFalse"] = self.continuous_cpi.isChecked()
+
+        # --- CFAR tab ---
+        settings["CFAR_RD_training_cells"] = int(self.CFAR_RD_training_cells.text())
+        settings["CFAR_RD_guard_cells"] = int(self.CFAR_RD_guard_cells.text())
+        settings["CFAR_RD_alpha"] = float(self.CFAR_RD_alpha.text())
+        settings["CFAR_Angle_training_cells"] = int(self.CFAR_Angle_training_cells.text())
+        settings["CFAR_Angle_guard_cells"] = int(self.CFAR_Angle_guard_cells.text())
+        settings["CFAR_Angle_alpha"] = float(self.CFAR_Angle_alpha.text())
+        self.close()
+    
+    def write_settings(self, settings):
+        ssp.utils.BlenderAddonUI_to_QtUI(settings,self )
+        specifications={}
+        ssp.utils.BlenderAddonUI_to_RadarSpecifications(settings,specifications)
+        return
+        self.f0_lineedit.setValue(settings.get("Center_Frequency_GHz", self.f0_lineedit.value()))
+        self.tx_power.setValue(settings.get("Transmit_Power_dBm", self.tx_power.value()))
+        self.pri.setValue(settings.get("PRI_us", self.pri.value()))
+        self.radar_mode.setCurrentText(settings.get("RadarMode", self.radar_mode.currentText()))
+        self.slobe.setValue(settings.get("FMCW_ChirpSlobe_MHz_usec", self.slobe.value()))
+        self.fs.setValue(settings.get("Fs_MHz", self.fs.value()))
+        self.n_adc.setValue(settings.get("N_ADC", self.n_adc.value()))
+        self.fmcw.setChecked(settings.get("FMCW", self.fmcw.isChecked()))
+        self.pulse_file.setText(settings.get("PulseWaveform", self.pulse_file.text()))
+
+        # --- Array & MIMO ---
+        self.linedit.setText(settings.get("ArrayInfofile", self.linedit.text()))
+        self.comboarrayinititype.setCurrentText(settings.get("Array_initialization", self.comboarrayinititype.currentText()))
+        self.config_combo.setCurrentText(settings.get("Default_Array_Config", self.config_combo.currentText()))
+        self.scale_combo.setCurrentText(settings.get("Position_Scale", self.scale_combo.currentText()))
+        self.tx_lineedit.setText(settings.get("TXPos_xy", self.tx_lineedit.text()))
+        self.rx_lineedit.setText(settings.get("RXPos_xy", self.rx_lineedit.text()))
+        # Optional bias if present
+
+        self.rxb_lineedit.setText(settings.get('RXPos_xy_bias', self.rxb_lineedit.text()))
+        
+        self.disscale_lineedit.setText(settings.get("distance scaling", self.disscale_lineedit.text()))
+        self.vaorder_lineedit.setText(settings.get("VA order (TX,RX)->[X,Y]|", self.vaorder_lineedit.text()))
+        self.vaorder_lineedit2.setText(settings.get("VA order2 (TX,RX)->[X,Y]|", self.vaorder_lineedit2.text()))
+        self.mimo_combo.setCurrentText(settings.get("MIMO_Tech", self.mimo_combo.currentText()))
+        self.mimo_lineedit.setText(settings.get("MIMO_W", self.mimo_lineedit.text()))
+
+        # --- Antenna patterns ---
+        self.tx_pattern.setCurrentText(settings.get("Transmit_Antenna_Element_Pattern", self.tx_pattern.currentText()))
+        self.tx_gain.setValue(settings.get("Transmit_Antenna_Element_Gain_db", self.tx_gain.value()))
+        self.tx_az_bw.setValue(settings.get("Transmit_Antenna_Element_Azimuth_BeamWidth_deg", self.tx_az_bw.value()))
+        self.tx_el_bw.setValue(settings.get("Transmit_Antenna_Element_Elevation_BeamWidth_deg", self.tx_el_bw.value()))
+        self.rx_pattern.setCurrentText(settings.get("Receive_Antenna_Element_Pattern", self.rx_pattern.currentText()))
+        self.rx_gain.setValue(settings.get("Receive_Antenna_Element_Gain_db", self.rx_gain.value()))
+        self.rx_az_bw.setValue(settings.get("Receive_Antenna_Element_Azimuth_BeamWidth_deg", self.rx_az_bw.value()))
+        self.rx_el_bw.setValue(settings.get("Receive_Antenna_Element_Elevation_BeamWidth_deg", self.rx_el_bw.value()))
+
+        # --- Noise & ADC ---
+        self.rf_filter_bw.setValue(settings.get("RF_AnalogNoiseFilter_Bandwidth_MHz", self.rf_filter_bw.value()))
+        self.rf_nf.setValue(settings.get("RF_NoiseFiguredB", self.rf_nf.value()))
+        self.temp_k.setValue(settings.get("Tempreture_K", self.temp_k.value()))
+        self.adc_pk2pk.setValue(settings.get("ADC_peak2peak", self.adc_pk2pk.value()))
+        self.adc_levels.setValue(settings.get("ADC_levels", self.adc_levels.value()))
+        self.adc_imp.setValue(settings.get("ADC_ImpedanceFactor", self.adc_imp.value()))
+        self.adc_lna.setValue(settings.get("ADC_LNA_Gain_dB", self.adc_lna.value()))
+        self.adc_sat.setChecked(settings.get("ADC_SaturationEnabled", self.adc_sat.isChecked()))
+
+        # --- Range-Doppler processing ---
+        self.range_window.setCurrentText(settings.get("RangeWindow", self.range_window.currentText()))
+        self.Range_FFT_points.setValue(settings.get("RangeFFT_OverNextP2", self.Range_FFT_points.value()))
+        self.pulse_buffering.setChecked(settings.get("Pulse_Buffering", self.pulse_buffering.isChecked()))
+        self.clutter_removal.setChecked(settings.get("ClutterRemoval_Enabled", self.clutter_removal.isChecked()))
+        self.dopplerprocessing_method.setCurrentText(settings.get("DopplerProcessingMIMODemod", self.dopplerprocessing_method.currentText()))
+        self.n_pulse.setValue(settings.get("NPulse", self.n_pulse.value()))
+        self.doppler_window.setCurrentText(settings.get("DopplerWindow", self.doppler_window.currentText()))
+        self.Doppler_FFT_points.setValue(settings.get("DopplerFFT_OverNextP2", self.Doppler_FFT_points.value()))
+        self.logscale.setChecked(settings.get("RangeDopplerCFARLogScale", self.logscale.isChecked()))
+        self.cfar_rd_type.setCurrentText(settings.get("CFAR_RD_type", self.cfar_rd_type.currentText()))
+        self.CFAR_RD_training_cells.setText(settings.get("CFAR_RD_training_cells", self.CFAR_RD_training_cells.text()))
+        self.CFAR_RD_guard_cells.setText(settings.get("CFAR_RD_guard_cells", self.CFAR_RD_guard_cells.text()))
+        self.CFAR_RD_alpha.setText(str(settings.get("CFAR_RD_alpha", self.CFAR_RD_alpha.text())))
+
+        # --- Angle processing ---
+        self.azimuth_window.setCurrentText(settings.get("AzimuthWindow", self.azimuth_window.currentText()))
+        self.azimuth_FFT_points.setValue(settings.get("AzFFT_OverNextP2", self.azimuth_FFT_points.value()))
+        self.Elevation_window.setCurrentText(settings.get("ElevationWindow", self.Elevation_window.currentText()))
+        self.Elevation_FFT_points.setValue(settings.get("ElFFT_OverNextP2", self.Elevation_FFT_points.value()))
+        self.spectrum_angle_type.setCurrentText(settings.get("AngleSpectrum", self.spectrum_angle_type.currentText()))
+        self.CaponAzimuth.setText(settings.get("Capon Azimuth min:res:max:fine_res (deg)", self.CaponAzimuth.text()))
+        self.CaponElevation.setText(settings.get("Capon Elevation min:res:max:fine_res (deg)", self.CaponElevation.text()))
+        self.cfar_angle_type.setCurrentText(settings.get("CFAR_Angle_type", self.cfar_angle_type.currentText()))
+        self.CFAR_Angle_training_cells.setText(settings.get("CFAR_Angle_training_cells", self.CFAR_Angle_training_cells.text()))
+        self.CFAR_Angle_guard_cells.setText(settings.get("CFAR_Angle_guard_cells", self.CFAR_Angle_guard_cells.text()))
+        self.CFAR_Angle_alpha.setText(str(settings.get("CFAR_Angle_alpha", self.CFAR_Angle_alpha.text())))
+
+        # --- Simulation settings ---
+        self.save_t.setChecked(settings.get("SaveSignalGenerationTime", self.save_t.isChecked()))
+        self.continuous_cpi.setChecked(settings.get("continuousCPIsTrue_oneCPIpeerFrameFalse", self.continuous_cpi.isChecked()))
+        self.starttime.setText(str(settings.get("t_start_radar", self.starttime.text())))
+
+    def write_settings0(self, settings):
+        # --- Transmit / Receive ---
+        if "Transmit_Power_dBm" in settings:
+            self.tx_power.setValue(settings["Transmit_Power_dBm"])
+        if "Transmit_Antenna_Element_Pattern" in settings:
+            self.tx_pattern.setCurrentText(settings["Transmit_Antenna_Element_Pattern"])
+        if "Transmit_Antenna_Element_Gain_db" in settings:
+            self.tx_gain.setValue(settings["Transmit_Antenna_Element_Gain_db"])
+        if "Transmit_Antenna_Element_Azimuth_BeamWidth_deg" in settings:
+            self.tx_az_bw.setValue(settings["Transmit_Antenna_Element_Azimuth_BeamWidth_deg"])
+        if "Transmit_Antenna_Element_Elevation_BeamWidth_deg" in settings:
+            self.tx_el_bw.setValue(settings["Transmit_Antenna_Element_Elevation_BeamWidth_deg"])
+
+        if "Receive_Antenna_Element_Pattern" in settings:
+            self.rx_pattern.setCurrentText(settings["Receive_Antenna_Element_Pattern"])
+        if "Receive_Antenna_Element_Gain_db" in settings:
+            self.rx_gain.setValue(settings["Receive_Antenna_Element_Gain_db"])
+        if "Receive_Antenna_Element_Azimuth_BeamWidth_deg" in settings:
+            self.rx_az_bw.setValue(settings["Receive_Antenna_Element_Azimuth_BeamWidth_deg"])
+        if "Receive_Antenna_Element_Elevation_BeamWidth_deg" in settings:
+            self.rx_el_bw.setValue(settings["Receive_Antenna_Element_Elevation_BeamWidth_deg"])
+
+        # --- Signal parameters ---
+        if "Center_Frequency_GHz" in settings:
+            self.f0_lineedit.setValue(settings["Center_Frequency_GHz"])
+        if "PRI_us" in settings:
+            self.pri.setValue(settings["PRI_us"])
+        if "Fs_MHz" in settings:
+            self.fs.setValue(settings["Fs_MHz"])
+        if "NPulse" in settings:
+            self.n_pulse.setValue(settings["NPulse"])
+        if "N_ADC" in settings:
+            self.n_adc.setValue(settings["N_ADC"])
+        if "RangeWindow" in settings:
+            self.range_window.setCurrentText(settings["RangeWindow"])
+        if "DopplerWindow" in settings:
+            self.doppler_window.setCurrentText(settings["DopplerWindow"])
+
+        # --- Noise & ADC ---
+        if "Tempreture_K" in settings:
+            self.temp_k.setValue(settings["Tempreture_K"])
+        if "ADC_peak2peak" in settings:
+            self.adc_pk2pk.setValue(settings["ADC_peak2peak"])
+        if "ADC_levels" in settings:
+            self.adc_levels.setValue(settings["ADC_levels"])
+        if "ADC_ImpedanceFactor" in settings:
+            self.adc_imp.setValue(settings["ADC_ImpedanceFactor"])
+        if "ADC_LNA_Gain_dB" in settings:
+            self.adc_lna.setValue(settings["ADC_LNA_Gain_dB"])
+        if "RF_NoiseFiguredB" in settings:
+            self.rf_nf.setValue(settings["RF_NoiseFiguredB"])
+        if "RF_AnalogNoiseFilter_Bandwidth_MHz" in settings:
+            self.rf_filter_bw.setValue(settings["RF_AnalogNoiseFilter_Bandwidth_MHz"])
+        if "ADC_SaturationEnabled" in settings:
+            self.adc_sat.setChecked(bool(settings["ADC_SaturationEnabled"]))
+
+        # --- Radar config ---
+        if "FMCW" in settings:
+            self.fmcw.setChecked(bool(settings["FMCW"]))
+        if "FMCW_ChirpSlobe_MHz_usec" in settings:
+            self.slobe.setValue(settings["FMCW_ChirpSlobe_MHz_usec"])
+        if "RangeFFT_OverNextP2" in settings:
+            self.Range_FFT_points.setValue(int(settings["RangeFFT_OverNextP2"]))
+        if "DopplerFFT_OverNextP2" in settings:
+            self.Doppler_FFT_points.setValue(int(settings["DopplerFFT_OverNextP2"]))
+        if "AzFFT_OverNextP2" in settings:
+            self.azimuth_FFT_points.setValue(int(settings["AzFFT_OverNextP2"]))
+        if "ElFFT_OverNextP2" in settings:
+            self.Elevation_FFT_points.setValue(int(settings["ElFFT_OverNextP2"]))
+        if "RadarMode" in settings:
+            self.radar_mode.setCurrentText(settings["RadarMode"])
+        
+        if "AngleSpectrum" in settings:
+            self.spectrum_angle_type.setCurrentText(settings["AngleSpectrum"])
+        if "PulseWaveform" in settings:
+            self.pulse_file.setText(settings["PulseWaveform"])
+        if "SaveSignalGenerationTime" in settings:
+            self.save_t.setChecked(bool(settings["SaveSignalGenerationTime"]))
+        if "continuousCPIsTrue_oneCPIpeerFrameFalse" in settings:
+            self.continuous_cpi.setChecked(bool(settings["continuousCPIsTrue_oneCPIpeerFrameFalse"]))
+
+        # --- CFAR tab ---
+        if "CFAR_RD_training_cells" in settings:
+            self.CFAR_RD_training_cells.setText(str(settings["CFAR_RD_training_cells"]))
+        if "CFAR_RD_guard_cells" in settings:
+            self.CFAR_RD_guard_cells.setText(str(settings["CFAR_RD_guard_cells"]))
+        if "CFAR_RD_alpha" in settings:
+            self.CFAR_RD_alpha.setText(str(settings["CFAR_RD_alpha"]))
+        if "CFAR_Angle_training_cells" in settings:
+            self.CFAR_Angle_training_cells.setText(str(settings["CFAR_Angle_training_cells"]))
+        if "CFAR_Angle_guard_cells" in settings:
+            self.CFAR_Angle_guard_cells.setText(str(settings["CFAR_Angle_guard_cells"]))
+        if "CFAR_Angle_alpha" in settings:
+            self.CFAR_Angle_alpha.setText(str(settings["CFAR_Angle_alpha"]))
+    
+    def fmcwinfo_fcn(self):
+        n_adc = self.n_adc.value()
+        fs = self.fs.value()
+        slobe = self.slobe.value()
+        pri = self.pri.value()
+        
+        CPI = self.n_pulse.value() * pri
+        s= f"T = {n_adc/fs:.1f} us, B = {n_adc/fs*slobe:.1f} MHz, CPI = {CPI/1000:.1f} ms, , Frame Time = {1000./bpy.context.scene.render.fps:.1f} ms, "
+        self.fmcwinfo.setText(s)
+    def readradarspec(self):
+        s = self.combo_radarsel.currentText()
+        if s=="":
+            return
+        isuite,iradar = s.split(',')
+        isuite = int(isuite)
+        iradar = int(iradar)
+        # ssp.utils.trimUserInputs()
+        # radobj = ssp.RadarSpecifications[isuite][iradar]['BlenderObject']
+        
+        suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        radobj = suite_information[isuite]['Radar'][iradar]['GeneralRadarSpec_Object'] 
+        self.write_settings(radobj)
+
+    def writeradarspec(self):
+        s = self.combo_radarsel.currentText()
+        if s=="":
+            return
+        isuite,iradar = s.split(',')
+        isuite = int(isuite)
+        iradar = int(iradar)
+        # ssp.utils.trimUserInputs()
+        # radobj = ssp.RadarSpecifications[isuite][iradar]['BlenderObject']
+        suite_information = ssp.environment.BlenderSuiteFinder().find_suite_information()
+        radobj = suite_information[isuite]['Radar'][iradar]['GeneralRadarSpec_Object'] 
+        
+        
+        ssp.utils.QtUI_to_BlenderAddonUI(self, radobj)
+        # ssp.utils.BlenderAddonUI_to_RadarSpecifications(radobj,specifications,online_change=True)
+        # self.read_settings(radobj)
+
     def run_add(self):
+        BlenderAddon = ssp.utils.createRadarObject_from_QtUI(self)
+        ssp.utils.QtUI_to_BlenderAddonUI(self, BlenderAddon)
+        self.updatesuiteradarspec()
+        ssp.radar.utils.apps.process_events()
+        return
         radar = ssp.radar.utils.addRadarFile(self.linedit.text(),float(self.f0_lineedit.text())*1e9)
         radar['CFAR_RD_training_cells']=int(self.CFAR_RD_training_cells.text()) 
         radar['CFAR_RD_guard_cells']=int(self.CFAR_RD_guard_cells.text())
@@ -1426,215 +2677,8 @@ class RadarArrayApp(QMainWindow):
         self.disscale_lineedit.setText(f'{AzELscale[0][0]},{AzELscale[0][1]}')
 
     def on_config_changed(self, index):
-        selected_value = self.config_combo.currentText()
         self.scale_combo.setCurrentIndex(0)
-            
-        if selected_value == "2x4":
-            self.tx_lineedit.setText("0,0|4,0")
-            self.rx_lineedit.setText("0,0|1,0|2,0|3,0")
-            self.va_combo.setCurrentIndex(0) # Az FFT
-            s = ''
-            k=0
-            for itx in range(2):
-                for irx in range(4):
-                    k+=1
-                    s+=f'({itx+1},{irx+1})->[{k},1] | '
-            self.vaorder_lineedit.setText(s)
-            s = ''
-            self.vaorder_lineedit2.setText(s)
-        if selected_value == "2x4-2":
-            self.tx_lineedit.setText("0,0|2,0")
-            self.rx_lineedit.setText("0,0|1,0|0,1|1,1")
-            self.va_combo.setCurrentIndex(1) # Az FFT El Estimation
-            s = ''
-            s+=f'(1,1)->[1,1] | '
-            s+=f'(1,2)->[2,1] | '
-            s+=f'(2,1)->[3,1] | '
-            s+=f'(2,2)->[4,1] |'
-            self.vaorder_lineedit.setText(s)
-            s = ''
-            s+=f'(1,1)->[1,1] |'
-            s+=f'(1,3)->[1,2] |'
-            self.vaorder_lineedit2.setText(s)
-        if selected_value == "3x4":
-            self.tx_lineedit.setText("0,0|4,0|8,0")
-            self.rx_lineedit.setText("0,0|1,0|2,0|3,0")
-            
-            self.va_combo.setCurrentIndex(0) # Az FFT
-            s = ''
-            k=0
-            for itx in range(3):
-                for irx in range(4):
-                    k+=1
-                    s+=f'({itx+1},{irx+1})->[{k},1] | '
-            self.vaorder_lineedit.setText(s)
-            s = ''
-            self.vaorder_lineedit2.setText(s)
-        if selected_value == "3x4-3":
-            self.tx_lineedit.setText("0,0|4,1|8,0")
-            self.rx_lineedit.setText("0,0|1,0|2,0|3,0")
-            self.va_combo.setCurrentIndex(1) # Az FFT El Estimation
-            s = ''
-            k=0
-            for itx in range(3):
-                for irx in range(4):
-                    k+=1
-                    s+=f'({itx+1},{irx+1})->[{k},1] | '
-            s = s[:-1]
-            self.vaorder_lineedit.setText(s)
-            s = ''
-            s+=f'(1,1)->[1,1] |'
-            s+=f'(2,1)->[1,2] |'
-            self.vaorder_lineedit2.setText(s)
-        if selected_value == "3x4-2":
-            self.scale_combo.setCurrentIndex(0)
-            self.tx_lineedit.setText("0,0|1,0|2,0")
-            self.rx_lineedit.setText("0,0|0,1|0,2|0,3")
-            self.va_combo.setCurrentIndex(3) # 2D FFT
-            s = ''
-            k=0
-            for itx in range(3):
-                for irx in range(4):
-                    k+=1
-                    s+=f'({itx+1},{irx+1})->[{itx+1},{irx+1}] | '
-            
-            self.vaorder_lineedit.setText(s)
-            self.vaorder_lineedit2.setText('')
-        if selected_value == "12x16":
-            self.tx_lineedit.setText("0,0|4,0|8,0|9,1|10,4|11,6|12,0|16,0|20,0|24,0|28,0|32,0")
-            self.rx_lineedit.setText("0,0|1,0|2,0|3,0|11,0|12,0|13,0|14,0|46,0|47,0|48,0|49,0|50,0|51,0|52,0|53,0")
-            self.va_combo.setCurrentIndex(2) # Az FFT - El FFT
-            s = ''
-            s+=f'(1,1)->[1,1] | '
-            s+=f'(1,2)->[2,1] | '
-            s+=f'(1,3)->[3,1] | '
-            s+=f'(1,4)->[4,1] | '
-            
-            s+=f'(2,1)->[5,1] | '
-            s+=f'(2,2)->[6,1] | '
-            s+=f'(2,3)->[7,1] | '
-            s+=f'(2,4)->[8,1] | '
-            
-            s+=f'(3,1)->[9,1] | '
-            s+=f'(3,2)->[10,1] | '
-            s+=f'(3,3)->[11,1] | '
-            s+=f'(3,4)->[12,1] | '
-            
-            s+=f'(7,1)->[13,1] | '
-            s+=f'(7,2)->[14,1] | '
-            s+=f'(7,3)->[15,1] | '
-            s+=f'(7,4)->[16,1] | '
-            
-            s+=f'(8,1)->[17,1] | '
-            s+=f'(8,2)->[18,1] | '
-            s+=f'(8,3)->[19,1] | '
-            s+=f'(8,4)->[20,1] | '
-            
-            s+=f'(9,1)->[21,1] | '
-            s+=f'(9,2)->[22,1] | '
-            s+=f'(9,3)->[23,1] | '
-            s+=f'(9,4)->[24,1] | '
-            
-            s+=f'(10,1)->[25,1] | '
-            s+=f'(10,2)->[26,1] | '
-            s+=f'(10,3)->[27,1] | '
-            s+=f'(10,4)->[28,1] | '
-            
-            s+=f'(11,1)->[29,1] | '
-            s+=f'(11,2)->[30,1] | '
-            s+=f'(11,3)->[31,1] | '
-            s+=f'(11,4)->[32,1] | '
-            
-            s+=f'(12,1)->[33,1] | '
-            s+=f'(12,2)->[34,1] | '
-            s+=f'(12,3)->[35,1] | '
-            s+=f'(12,4)->[36,1] | '
-            
-            s+=f'(10,6)->[37,1] | '
-            s+=f'(10,7)->[38,1] | '
-            s+=f'(10,8)->[39,1] | '
-            
-            s+=f'(11,5)->[40,1] | '
-            s+=f'(11,6)->[41,1] | '
-            s+=f'(11,7)->[42,1] | '
-            s+=f'(11,8)->[43,1] | '
-            
-            s+=f'(12,5)->[44,1] | '
-            s+=f'(12,6)->[45,1] | '
-            s+=f'(12,7)->[46,1] | '
-            
-            s+=f'(1,9)->[47,1] | '
-            s+=f'(1,10)->[48,1] | '
-            s+=f'(1,11)->[49,1] | '
-            s+=f'(1,12)->[50,1] | '
-            s+=f'(1,13)->[51,1] | '
-            s+=f'(1,14)->[52,1] | '
-            s+=f'(1,15)->[53,1] | '
-            s+=f'(1,16)->[54,1] | '
-            
-            s+=f'(3,9)->[55,1] | '
-            s+=f'(3,10)->[56,1] | '
-            s+=f'(3,11)->[57,1] | '
-            s+=f'(3,12)->[58,1] | '
-            s+=f'(3,13)->[59,1] | '
-            s+=f'(3,14)->[60,1] | '
-            s+=f'(3,15)->[61,1] | '
-            s+=f'(3,16)->[62,1] | '
-            
-            s+=f'(8,9)->[63,1] | '
-            s+=f'(8,10)->[64,1] | '
-            s+=f'(8,11)->[65,1] | '
-            s+=f'(8,12)->[66,1] | '
-            s+=f'(8,13)->[67,1] | '
-            s+=f'(8,14)->[68,1] | '
-            s+=f'(8,15)->[69,1] | '
-            s+=f'(8,16)->[70,1] | '
-            
-            s+=f'(10,9)->[71,1] | '
-            s+=f'(10,10)->[72,1] | '
-            s+=f'(10,11)->[73,1] | '
-            s+=f'(10,12)->[74,1] | '
-            s+=f'(10,13)->[75,1] | '
-            s+=f'(10,14)->[76,1] | '
-            s+=f'(10,15)->[77,1] | '
-            s+=f'(10,16)->[78,1] | '
-
-            s+=f'(12,9)->[79,1] | '
-            s+=f'(12,10)->[80,1] | '
-            s+=f'(12,11)->[81,1] | '
-            s+=f'(12,12)->[82,1] | '
-            s+=f'(12,13)->[83,1] | '
-            s+=f'(12,14)->[84,1] | '
-            s+=f'(12,15)->[85,1] | '
-            s+=f'(12,16)->[86,1] | '
-            self.vaorder_lineedit.setText(s)
-            s = ''
-            s+=f'(1,1)->[1,1] |'
-            s+=f'(4,1)->[1,2] |'
-            s+=f'(5,1)->[1,3] |'
-            s+=f'(6,1)->[1,4] |'
-            self.vaorder_lineedit2.setText(s)
-
-        
-        if selected_value == "12x16-2":
-            self.scale_combo.setCurrentIndex(0)
-            self.tx_lineedit.setText("0,0|4,0|8,0|12,0|0,4|4,4|8,4|12,4|0,8|4,8|8,8|12,8")
-            self.rx_lineedit.setText("0,0|1,0|2,0|3,0|0,1|1,1|2,1|3,1|0,2|1,2|2,2|3,2|0,3|1,3|2,3|3,3")
-            self.va_combo.setCurrentIndex(3) # 2D FFT
-            s = ''
-            k=0
-            for itx1 in range(3):
-                for itx2 in range(4):
-                    itx = itx1*4+itx2
-                    for irx1 in range(4):
-                        for irx2 in range(4):
-                            irx = irx1*4+irx2
-                            k+=1
-                            s+=f'({itx+1},{irx+1})->[{itx2*4+irx2+1},{itx1*4+irx1+1}] | '
-            self.vaorder_lineedit.setText(s)
-            self.vaorder_lineedit2.setText('')
-    
-    
+        ssp.utils.setQtUI_arrays(self,index)
         self.on_mimo_changed(self.mimo_combo.currentIndex())
     
     def apply_vaAuto(self):
@@ -1741,7 +2785,7 @@ class RadarArrayApp(QMainWindow):
         vaorder2        = data.get('vaorder2', None)
         PrecodingMatrix = data.get('PrecodingMatrix', None)
         scale          = str(data.get('scale', None)[0])
-        vaprocessing   = str(data.get('vaprocessing', None)[0])
+        # vaprocessing   = str(data.get('vaprocessing', None)[0])
         id=data.get('id', None)
         
         # plt.figure()
@@ -1819,7 +2863,7 @@ class RadarArrayApp(QMainWindow):
                 pass
             vaorder2.append((int(float(tx)), int(float(rx)), v1, v2))
         scale = self.scale_combo.currentText()
-        vaprocessing = self.va_combo.currentText()
+        vaprocessing = ""
         
         txt = self.mimo_lineedit.text()
         row_strs = txt.split(';')
@@ -1840,6 +2884,7 @@ class RadarArrayApp(QMainWindow):
     def run_analysis(self):
         # Placeholder: implement analysis
         pass
+
 
 class RISAnalysisApp(QMainWindow):
     def __init__(self):
@@ -1865,6 +2910,14 @@ class RISAnalysisApp(QMainWindow):
         self.f0_lineedit.setText("62")
         hbox_f0.addWidget(self.f0_lineedit)
         self.vbox.addLayout(hbox_f0)
+
+        # Freq (GHz)
+        hbox_fi = QHBoxLayout()
+        hbox_fi.addWidget(QLabel("Add Resp. Freq (GHz):"))
+        self.fi_lineedit = QLineEdit()
+        self.fi_lineedit.setText("")
+        hbox_fi.addWidget(self.fi_lineedit)
+        self.vbox.addLayout(hbox_fi)
 
         # Nx,Ny,dx,dy
         hbox_n = QHBoxLayout()
@@ -2350,6 +3403,16 @@ class RISAnalysisApp(QMainWindow):
         f0 = float(f0)
         f0 = f0 * 1e9
         Lambda = 3e8 / f0
+        fis = self.fi_lineedit.text().split(",")
+        fi = []
+        Lambdai=[]
+        for f in fis:
+            if f == "":
+                continue
+            f = float(f)
+            f = f * 1e9
+            fi.append(f)
+            Lambdai.append(3e8 / f)
         data = scipy.io.loadmat(self.linedit.text())
         pos = data['pos']              # shape: (N, 3) if saved like that
         a = data['a']                  # shape: (N,) or (N, 1)
@@ -2378,6 +3441,11 @@ class RISAnalysisApp(QMainWindow):
                 a0 =  np.exp(1j * phase)
                 pc = a * a0
                 o = np.abs(np.sum(pc))
+                for Lambda_i in Lambdai:
+                    phase = -2 * np.pi / Lambda_i * d
+                    a0 =  np.exp(1j * phase)
+                    pc = a * a0
+                    o += np.abs(np.sum(pc))
                 pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
         for i in range(-Ng,Ng):
             for j in range(-Ng,Ng):
@@ -2391,6 +3459,11 @@ class RISAnalysisApp(QMainWindow):
                 a0 =  np.exp(1j * phase)
                 pc = a * a0
                 o = np.abs(np.sum(pc))
+                for Lambda_i in Lambdai:
+                    phase = -2 * np.pi / Lambda_i * d
+                    a0 =  np.exp(1j * phase)
+                    pc = a * a0
+                    o += np.abs(np.sum(pc))
                 pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
         for i in range(-Ng,Ng):
             for j in range(-Ng,Ng):
@@ -2404,6 +3477,11 @@ class RISAnalysisApp(QMainWindow):
                 a0 =  np.exp(1j * phase)
                 pc = a * a0
                 o = np.abs(np.sum(pc))
+                for Lambda_i in Lambdai:
+                    phase = -2 * np.pi / Lambda_i * d
+                    a0 =  np.exp(1j * phase)
+                    pc = a * a0
+                    o += np.abs(np.sum(pc))
                 pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
         pos_o = np.array(pos_o)
 
@@ -2505,6 +3583,11 @@ class RISAnalysisApp(QMainWindow):
                 a0 =  np.exp(1j * phase)
                 pc = a * a0
                 o = np.abs(np.sum(pc))
+                for Lambda_i in Lambdai:
+                    phase = -2 * np.pi / Lambda_i * d
+                    a0 =  np.exp(1j * phase)
+                    pc = a * a0
+                    o += np.abs(np.sum(pc))
                 pos_o.append((target_pos_i[0,0], target_pos_i[0,1], target_pos_i[0,2], o))
         pos_o = np.array(pos_o)
         fig3 = plt.figure(figsize=(10,10))
